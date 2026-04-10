@@ -12,17 +12,17 @@ async def get_agent_tool(settings):
             "type": "function",
             "function": {
                 "name": "agent_tool_call",
-                "description": f"根据Agent给出的agent_skill调用指定Agent工具，返回结果。当前可用的Agent工具ID以及Agent工具的agent_skill有：{tool_agent_list}",
+                "description": f"Call a specific Agent tool based on the agent_skill provided by the Agent and return the result. Currently available Agent tool IDs and their agent_skills: {tool_agent_list}",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "agent_id": {
                             "type": "string",
-                            "description": "需要调用的Agent工具ID",
+                            "description": "The ID of the Agent tool to call",
                         },
                         "query": {
                             "type": "string",
-                            "description": "需要向Agent工具发送的问题",
+                            "description": "The question to send to the Agent tool",
                         }
                     },
                     "required": ["agent_id", "query"]

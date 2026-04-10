@@ -85,27 +85,27 @@ async def upload_image_via_url(image_url, server_address):
     upload_url = f"{server_address}/upload/image"
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-            # 下载图片
+            # Download image
             async with session.get(image_url) as response:
                 if response.status != 200:
                     print("Failed to download image.")
                     return None
                 image_content = await response.read()
 
-            # 构造 multipart/form-data 请求体
+            # Construct multipart/form-data request body
             filename = image_url.split('/')[-1]
             mpwriter = aiohttp.MultipartWriter('form-data')
             
-            # 添加普通字段
+            # Add regular fields
             mpwriter.append('false', {'content-type': 'text/plain'})  # overwrite
             mpwriter.append('input', {'content-type': 'text/plain'})  # type
             mpwriter.append('', {'content-type': 'text/plain'})       # subfolder
 
-            # 添加文件字段
+            # Add file field
             part = mpwriter.append(image_content)
             part.set_content_disposition('form-data', name='image', filename=filename)
 
-            # 上传图片
+            # Upload image
             headers = {
                 'Content-Type': mpwriter.content_type,
             }
@@ -128,7 +128,7 @@ async def comfyui_tool_call(tool_name, text_input = None, image_input = None,tex
     settings = await load_settings()
     comfyuiServers = settings["comfyuiServers"]
     server_address = ""
-    # 如果没有找到可用的服务器，则则等待直到找到一个可用的服务器
+    # If no available server found, keep waiting until one is found
     count = 0
     while server_address == "" or count > 30 or comfyuiServers == []:
         await asyncio.sleep(1)
@@ -140,7 +140,7 @@ async def comfyui_tool_call(tool_name, text_input = None, image_input = None,tex
         count += 1
 
     if server_address == "":
-        return "没有可用的comfyui服务器"
+        return "No available ComfyUI server"
     
     WF_PATH = UPLOAD_FILES_DIR + f"/{tool_name}" + ".json"
     with open(WF_PATH, "r", encoding="utf-8") as f:
@@ -156,7 +156,7 @@ async def comfyui_tool_call(tool_name, text_input = None, image_input = None,tex
             break
 
     if using_workflow == {}:
-        return "没有找到对应的workflow"
+        return "No matching workflow found"
 
     if text_input is not None:
         text_nodeId = using_workflow["text_input"]["nodeId"]
@@ -172,30 +172,30 @@ async def comfyui_tool_call(tool_name, text_input = None, image_input = None,tex
     if image_input is not None:
         image_nodeId = using_workflow["image_input"]["nodeId"]
         image_inputField = using_workflow["image_input"]["inputField"]
-        image_result = await upload_image_via_url(image_input, server_address)  # 使用 await
+        image_result = await upload_image_via_url(image_input, server_address)  # use await
         if image_result is not None:
             image_name = image_result.get("name")
             if image_name:
                 prompt[image_nodeId]["inputs"][image_inputField] = image_name
                 print("Image uploaded successfully.")
             else:
-                return "图片上传失败"
+                return "Image upload failed"
         else:
-            return "图片上传失败"
+            return "Image upload failed"
 
     if image_input_2 is not None:
         image_nodeId = using_workflow["image_input_2"]["nodeId"]
         image_inputField = using_workflow["image_input_2"]["inputField"]
-        image_result = await upload_image_via_url(image_input_2, server_address)  # 使用 await
+        image_result = await upload_image_via_url(image_input_2, server_address)  # use await
         if image_result is not None:
             image_name_2 = image_result.get("name")
             if image_name_2:
                 prompt[image_nodeId]["inputs"][image_inputField] = image_name_2
                 print("Image uploaded successfully.")
             else:
-                return "图片上传失败"
+                return "Image upload failed"
         else:
-            return "图片上传失败"
+            return "Image upload failed"
 
     if "seed_input" in using_workflow and using_workflow["seed_input"] is not None:
         seed_nodeId = using_workflow["seed_input"].get("nodeId")

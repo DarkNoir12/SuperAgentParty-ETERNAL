@@ -20,7 +20,7 @@ import base64
 from py.get_setting import get_port,load_settings
 from py.image_host import upload_image_host
 
-# 定义请求体
+# Define request body
 class QQBotConfig(BaseModel):
     QQAgent: str
     memoryLimit: int
@@ -40,21 +40,21 @@ class QQBotManager:
         self.loop = None
         self._shutdown_event = threading.Event()
         self._startup_complete = threading.Event()
-        self._ready_complete = threading.Event()  # 新增：等待 on_ready 完成
+        self._ready_complete = threading.Event()  # New: Wait for on_ready to complete
         self._startup_error = None
         
     def start_bot(self, config):
-        """在新线程中启动机器人"""
+        """Start bot in a new thread"""
         if self.is_running:
-            raise Exception("机器人已在运行")
+            raise Exception("Bot is already running")
             
         self.config = config
         self._shutdown_event.clear()
         self._startup_complete.clear()
-        self._ready_complete.clear()  # 重置就绪状态
+        self._ready_complete.clear()  # Reset ready state
         self._startup_error = None
         
-        # 使用传统线程方式，更稳定
+        # Use traditional thread method, more stable
         self.bot_thread = threading.Thread(
             target=self._run_bot_thread,
             args=(config,),
@@ -63,36 +63,36 @@ class QQBotManager:
         )
         self.bot_thread.start()
         
-        # 等待启动确认（连接建立）
+        # Wait for startup confirmation (connection established)
         if not self._startup_complete.wait(timeout=30):
             self.stop_bot()
-            raise Exception("机器人连接超时")
+            raise Exception("Bot connection timeout")
             
-        # 检查是否有启动错误
+        # Check for startup errors
         if self._startup_error:
             self.stop_bot()
-            raise Exception(f"机器人启动失败: {self._startup_error}")
+            raise Exception(f"Bot failed to start: {self._startup_error}")
         
-        # 等待机器人就绪（on_ready 触发）
+        # Wait for bot ready (on_ready triggered)
         if not self._ready_complete.wait(timeout=30):
             self.stop_bot()
-            raise Exception("机器人就绪超时，请检查网络连接和配置")
+            raise Exception("Bot ready timeout, please check network connection and config")
             
         if not self.is_running:
             self.stop_bot()
-            raise Exception("机器人未能正常运行")
+            raise Exception("Bot failed to run properly")
             
     def _run_bot_thread(self, config):
-        """在线程中运行机器人"""
+        """Run bot in thread"""
         self.loop = None
         bot_task = None
         
         try:
-            # 创建新的事件循环
+            # Create new event loop
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
             
-            # 创建机器人客户端
+            # Create bot client
             self.bot_client = MyClient(intents=botpy.Intents(public_messages=True),is_sandbox=config.is_sandbox)
             self.bot_client.QQAgent = config.QQAgent
             self.bot_client.memoryLimit = config.memoryLimit
@@ -100,64 +100,64 @@ class QQBotManager:
             self.bot_client.reasoningVisible = config.reasoningVisible
             self.bot_client.quickRestart = config.quickRestart
             
-            # 设置弱引用以避免循环引用
+            # Set weak reference to avoid circular reference
             self.bot_client._manager_ref = weakref.ref(self)
-            # 设置就绪回调
+            # Set ready callback
             self.bot_client._ready_callback = self._on_bot_ready
             
-            # 创建启动任务
+            # Create startup task
             async def run_bot():
                 try:
-                    logging.info("开始连接QQ机器人...")
+                    logging.info("Connecting to QQ bot...")
                     
-                    # 启动机器人连接
+                    # Start bot connection
                     await self.bot_client.start(appid=config.appid, secret=config.secret)
                     
                 except asyncio.CancelledError:
-                    logging.info("机器人任务被取消")
+                    logging.info("Bot task cancelled")
                 except Exception as e:
-                    logging.error(f"机器人运行时异常: {e}")
-                    # 保存启动错误
+                    logging.error(f"Bot runtime exception: {e}")
+                    # Save startup error
                     self._startup_error = str(e)
-                    # 确保启动等待被解除
+                    # Ensure startup wait is released
                     if not self._startup_complete.is_set():
                         self._startup_complete.set()
                     raise
             
-            # 创建并运行机器人任务
+            # Create and run bot task
             bot_task = self.loop.create_task(run_bot())
             
-            # 在连接建立后设置启动完成标志（但还未就绪）
+            # Set startup complete flag after connection established (but not yet ready)
             def connection_established():
                 if not self._startup_error:
                     self._startup_complete.set()
-                    logging.info("机器人连接已建立，等待就绪...")
+                    logging.info("Bot connection established, waiting for ready...")
             
-            # 稍微延迟设置连接状态，让 start 方法有机会检测错误
+            # Slightly delay setting connection state to give start method chance to detect errors
             async def delayed_connection_check():
-                await asyncio.sleep(2)  # 给连接2秒时间
+                await asyncio.sleep(2)  # Give connection 2 seconds
                 if not bot_task.done() and not self._startup_error:
                     connection_established()
             
-            # 创建延迟检查任务
+            # Create delayed check task
             check_task = self.loop.create_task(delayed_connection_check())
             
-            # 运行主任务
+            # Run main task
             self.loop.run_until_complete(bot_task)
             
         except Exception as e:
-            logging.error(f"机器人线程异常: {e}")
-            # 确保错误被记录并传递
+            logging.error(f"Bot thread exception: {e}")
+            # Ensure error is logged and propagated
             if not self._startup_error:
                 self._startup_error = str(e)
         finally:
-            # 确保启动等待被解除
+            # Ensure startup wait is released
             if not self._startup_complete.is_set():
                 self._startup_complete.set()
             if not self._ready_complete.is_set():
                 self._ready_complete.set()
                 
-            # 确保任务被正确取消
+            # Ensure task is properly cancelled
             if bot_task and not bot_task.done():
                 bot_task.cancel()
                 try:
@@ -165,64 +165,64 @@ class QQBotManager:
                 except asyncio.CancelledError:
                     pass
                 except Exception as e:
-                    logging.warning(f"取消机器人任务时出错: {e}")
+                    logging.warning(f"Error cancelling bot task: {e}")
             
             self._cleanup()
     
     def _on_bot_ready(self):
-        """机器人就绪回调"""
+        """Bot ready callback"""
         self.is_running = True
         self._ready_complete.set()
-        logging.info("QQ机器人已完全就绪")
+        logging.info("QQ bot is fully ready")
 
     def _cleanup(self):
-        """清理资源"""
+        """Clean up resources"""
         self.is_running = False
         
-        # 清理机器人客户端
+        # Clean up bot client
         if self.bot_client and self.loop and not self.loop.is_closed():
             try:
-                # 标记客户端为关闭状态
+                # Mark client as closing
                 self.bot_client._shutdown_requested = True
                 
-                # 如果客户端有close方法且事件循环还在运行，尝试关闭
+                # If client has close method and event loop is running, try to close
                 if hasattr(self.bot_client, 'close'):
-                    # 创建关闭任务并运行
+                    # Create and run close task
                     async def close_client():
                         try:
                             await self.bot_client.close()
                         except Exception as e:
-                            logging.warning(f"关闭客户端时出错: {e}")
+                            logging.warning(f"Error closing client: {e}")
                     
                     close_task = self.loop.create_task(close_client())
                     try:
                         self.loop.run_until_complete(close_task)
                     except Exception as e:
-                        logging.warning(f"执行关闭任务时出错: {e}")
+                        logging.warning(f"Error executing close task: {e}")
                         
             except Exception as e:
-                logging.warning(f"清理机器人客户端时出错: {e}")
+                logging.warning(f"Error cleaning up bot client: {e}")
                 
-        # 清理事件循环
+        # Clean up event loop
         if self.loop and not self.loop.is_closed():
             try:
-                # 获取所有待执行的任务
+                # Get all pending tasks
                 pending_tasks = []
                 try:
                     pending_tasks = asyncio.all_tasks(self.loop)
                 except RuntimeError:
-                    # 如果事件循环已经停止，all_tasks 可能会抛出 RuntimeError
+                    # If event loop has stopped, all_tasks may raise RuntimeError
                     pass
                 
-                # 取消所有待执行的任务
+                # Cancel all pending tasks
                 for task in pending_tasks:
                     if not task.done():
                         task.cancel()
                 
-                # 如果有待处理的任务，等待它们完成或取消
+                # If there are pending tasks, wait for them to complete or cancel
                 if pending_tasks:
                     try:
-                        # 使用 gather 收集所有任务的结果
+                        # Use gather to collect all task results
                         async def cancel_all_tasks():
                             await asyncio.gather(*pending_tasks, return_exceptions=True)
                         
@@ -230,59 +230,59 @@ class QQBotManager:
                         self.loop.run_until_complete(cancel_task)
                         
                     except Exception as e:
-                        logging.warning(f"等待任务取消时出错: {e}")
+                        logging.warning(f"Error waiting for task cancellation: {e}")
                         
-                # 关闭事件循环
+                # Close event loop
                 if not self.loop.is_closed():
                     self.loop.close()
                         
             except Exception as e:
-                logging.warning(f"关闭事件循环时出错: {e}")
+                logging.warning(f"Error closing event loop: {e}")
                 
         self.bot_client = None
         self.loop = None
         self._shutdown_event.set()
             
     def stop_bot(self):
-        """停止机器人"""
+        """Stop bot"""
         if not self.is_running and not self.bot_thread:
             return
             
-        logging.info("正在停止QQ机器人...")
+        logging.info("Stopping QQ bot...")
         
-        # 设置停止标志
+        # Set stop flag
         self._shutdown_event.set()
         self.is_running = False
         
-        # 如果机器人客户端存在，标记为请求关闭
+        # If bot client exists, mark as requesting close
         if self.bot_client:
             self.bot_client._shutdown_requested = True
         
-        # 如果事件循环存在且正在运行，尝试停止它
+        # If event loop exists and running, try to stop it
         if self.loop and not self.loop.is_closed():
             try:
-                # 在循环中调度停止
+                # Schedule stop in loop
                 self.loop.call_soon_threadsafe(self.loop.stop)
             except RuntimeError as e:
-                # 如果循环已经停止，会抛出 RuntimeError
-                logging.debug(f"事件循环已停止: {e}")
+                # If loop has stopped, raises RuntimeError
+                logging.debug(f"Event loop stopped: {e}")
             except Exception as e:
-                logging.warning(f"停止事件循环时出错: {e}")
+                logging.warning(f"Error stopping event loop: {e}")
         
-        # 等待线程结束
+        # Wait for thread to finish
         if self.bot_thread and self.bot_thread.is_alive():
             try:
                 self.bot_thread.join(timeout=10)
                 if self.bot_thread.is_alive():
-                    logging.warning("机器人线程在超时后仍在运行")
+                    logging.warning("Bot thread still running after timeout")
             except Exception as e:
-                logging.warning(f"等待线程结束时出错: {e}")
+                logging.warning(f"Error waiting for thread to finish: {e}")
                 
-        logging.info("QQ机器人已停止")
+        logging.info("QQ bot stopped")
 
 
     def get_status(self):
-        """获取机器人状态"""
+        """Get bot status"""
         return {
             "is_running": self.is_running,
             "thread_alive": self.bot_thread.is_alive() if self.bot_thread else False,
@@ -296,14 +296,14 @@ class QQBotManager:
 
 
     def __del__(self):
-        """析构函数确保资源清理"""
+        """Destructor ensures resource cleanup"""
         try:
             self.stop_bot()
         except:
             pass
 
 
-# MyClient 类的修改
+# MyClient class modification
 class MyClient(botpy.Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -319,43 +319,43 @@ class MyClient(botpy.Client):
         self._ready_event = asyncio.Event()
         self.port = get_port()
         self._shutdown_requested = False
-        self._manager_ref = None  # 弱引用管理器
+        self._manager_ref = None  # Weak reference to manager
         
     async def start(self, appid, secret):
-        """启动客户端"""
+        """Start client"""
         try:
             await super().start(appid=appid, secret=secret)
         except Exception as e:
-            logging.error(f"客户端启动失败: {e}")
-            # 确保错误被传递到上层
-            raise Exception(f"认证失败或配置错误: {e}")
+            logging.error(f"Client failed to start: {e}")
+            # Ensure error is propagated to upper level
+            raise Exception(f"Authentication failed or config error: {e}")
     
     async def close(self):
-        """关闭客户端"""
+        """Close client"""
         self._shutdown_requested = True
         self.is_running = False
         try:
-            # 调用父类的关闭方法
+            # Call parent class close method
             await super().close()
         except Exception as e:
-            logging.warning(f"关闭客户端时出错: {e}")
+            logging.warning(f"Error closing client: {e}")
     
     async def on_ready(self):
-        """机器人就绪事件"""
+        """Bot ready event"""
         if self._shutdown_requested:
             return
             
         self.is_running = True
         self._ready_event.set()
         
-        # 调用管理器的就绪回调
+        # Call manager's ready callback
         if self._ready_callback:
             self._ready_callback()
         
-        logging.info("QQ机器人已就绪，可以接收消息")
+        logging.info("QQ bot is ready, can receive messages")
 
     async def wait_for_ready(self, timeout=30):
-        """等待机器人就绪"""
+        """Wait for bot ready"""
         try:
             await asyncio.wait_for(self._ready_event.wait(), timeout=timeout)
             return True
@@ -380,14 +380,14 @@ class MyClient(botpy.Client):
                     async with aiohttp.ClientSession() as session:
                         async with session.get(image_url) as response:
                             if response.status == 200:
-                                # 获取原始图像数据
+                                # Get original image data
                                 image_data = await response.read()
                                 
-                                # 检查是否为支持的格式
+                                # Check if supported format
                                 content_type = attachment.content_type.lower()
                                 if content_type not in ["image/png", "image/jpeg", "image/gif"]:
                                     try:
-                                        # 转换为JPG格式
+                                        # Convert to JPG format
                                         img = Image.open(io.BytesIO(image_data))
                                         if img.mode in ("RGBA", "LA", "P"):
                                             img = img.convert("RGB")
@@ -397,10 +397,10 @@ class MyClient(botpy.Client):
                                         image_data = jpg_buffer.getvalue()
                                         content_type = "image/jpeg"
                                     except Exception as e:
-                                        print(f"图像转换失败: {e}")
+                                        print(f"Image conversion failed: {e}")
                                         continue
                                 
-                                # 转换为Base64
+                                # Convert to Base64
                                 base64_data = base64.b64encode(image_data).decode("utf-8")
                                 data_uri = f"data:{content_type};base64,{base64_data}"
                                 
@@ -412,7 +412,7 @@ class MyClient(botpy.Client):
                                 })
         
         if user_content:
-            user_content.append({"type": "text", "text": message.content+"图片链接："+json.dumps(image_url_list)})
+            user_content.append({"type": "text", "text": message.content+"Image links:"+json.dumps(image_url_list)})
         else:
             user_content = message.content
             
@@ -422,7 +422,7 @@ class MyClient(botpy.Client):
         if c_id not in self.memoryList:
             self.memoryList[c_id] = []
             
-        # 初始化状态管理
+        # Initialize state management
         if not hasattr(self, 'msg_seq_counters'):
             self.msg_seq_counters = {}
         self.msg_seq_counters.setdefault(c_id, 1)
@@ -437,7 +437,7 @@ class MyClient(botpy.Client):
         if self.quickRestart:
             if "/重启" in message.content:
                 self.memoryList[c_id] = []
-                await self._send_text_message(message, "对话记录已重置。")
+                await self._send_text_message(message, "Conversation history has been reset.")
                 return
             if "/restart" in message.content: 
                 self.memoryList[c_id] = []
@@ -456,7 +456,7 @@ class MyClient(botpy.Client):
                 fileLinks = self.fileLinks[c_id]
             else:
                 fileLinks = []
-            # 流式调用API
+            # Streaming API call
             stream = await client.chat.completions.create(
                 model=self.QQAgent,
                 messages=self.memoryList[c_id],
@@ -487,11 +487,11 @@ class MyClient(botpy.Client):
                             self.fileLinks[c_id].append(tool_link)
 
                         if async_tool_id:
-                            # 判断async_tool_id在不在self.asyncToolsID[c_id]中
+                            # Check if async_tool_id is in self.asyncToolsID[c_id]
                             if async_tool_id not in self.asyncToolsID[c_id]:
                                 self.asyncToolsID[c_id].append(async_tool_id)
 
-                            # 如果async_tool_id在self.asyncToolsID[c_id]中，则删除
+                            # If async_tool_id is in self.asyncToolsID[c_id], remove it
                             else:
                                 self.asyncToolsID[c_id].remove(async_tool_id)
 
@@ -500,16 +500,16 @@ class MyClient(botpy.Client):
                 if reasoning_content and self.reasoningVisible:
                     content = reasoning_content
                 
-                # 更新缓冲区
+                # Update buffer
                 state = self.processing_states[c_id]
                 state["text_buffer"] += content
                 state["image_buffer"] += content
 
-                # 处理文本实时发送
+                # Process real-time text sending
                 while True:
                     if self.separators == []:
                         break
-                    # 查找分隔符
+                    # Find separator
                     buffer = state["text_buffer"]
                     split_pos = -1
                     for i, c in enumerate(buffer):
@@ -519,28 +519,28 @@ class MyClient(botpy.Client):
                     if split_pos == -1:
                         break
 
-                    # 分割并处理当前段落
+                    # Split and process current paragraph
                     current_chunk = buffer[:split_pos]
                     state["text_buffer"] = buffer[split_pos:]
                     
-                    # 清洗并发送文字
+                    # Clean and send text
                     clean_text = self._clean_text(current_chunk)
                     if clean_text:
                         await self._send_text_message(message, clean_text)
                     
-            # 提取图片到缓存
+            # Extract images to cache
             self._extract_images_to_cache(c_id)
 
-            # 处理剩余文本
+            # Process remaining text
             if state["text_buffer"]:
                 clean_text = self._clean_text(state["text_buffer"])
                 if clean_text:
                     await self._send_text_message(message, clean_text)
             
-            # 最终图片发送
+            # Final image sending
             await self._send_cached_images(message)
 
-            # 记忆管理
+            # Memory management
             full_content = "".join(full_response)
             self.memoryList[c_id].append({"role": "assistant", "content": full_content})
             if self.memoryLimit > 0:
@@ -548,29 +548,29 @@ class MyClient(botpy.Client):
                     self.memoryList[c_id].pop(0)
 
         except Exception as e:
-            print(f"处理异常: {e}")
+            print(f"Processing exception: {e}")
             clean_text = self._clean_text(str(e))
             if clean_text:
                 await self._send_text_message(message, clean_text)
         finally:
-            # 清理状态
+            # Clean up state
             if c_id in self.processing_states:
                 del self.processing_states[c_id]
 
     def _extract_images_to_cache(self, c_id):
-        """渐进式图片链接提取"""
+        """Progressive image link extraction"""
         state = self.processing_states[c_id]
         temp_buffer = state["image_buffer"]
-        state["image_buffer"] = ""  # 重置缓冲区
+        state["image_buffer"] = ""  # Reset buffer
         
-        # 匹配完整图片链接
+        # Match complete image link
         pattern = r'!\[.*?\]\((https?://[^\s\)]+)'
         matches = re.finditer(pattern, temp_buffer)
         for match in matches:
             state["image_cache"].append(match.group(1))
 
     async def _send_text_message(self, message, text):
-        """发送文本消息并更新序号"""
+        """Send text message and update sequence number"""
         c_id = message.author.user_openid
         await message._api.post_c2c_message(
             openid=message.author.user_openid,
@@ -582,28 +582,28 @@ class MyClient(botpy.Client):
         self.msg_seq_counters[c_id] += 1
 
     async def _send_cached_images(self, message):
-        """批量发送缓存的图片"""
+        """Batch send cached images"""
         c_id = message.author.user_openid
         state = self.processing_states.get(c_id, {})
         
         for url in state.get("image_cache", []):
             try:
-                # 链接有效性验证
+                # Link validity check
                 if not re.match(r'^https?://', url):
                     continue
-                # 判断是否开启了图床功能
+                # Check if image hosting is enabled
                 url = await upload_image_host(url)
-                # 用request获取图片，保证图片存在
+                # Use request to get image, ensure image exists
                 res = requests.get(url)
 
-                print(f"发送图片: {url}")
-                # 上传媒体文件
+                print(f"Sending image: {url}")
+                # Upload media file
                 upload_media = await message._api.post_c2c_file(
                     openid=message.author.user_openid,
                     file_type=1,
                     url=url
                 )
-                # 发送富媒体消息
+                # Send rich media message
                 await message._api.post_c2c_message(
                     openid=message.author.user_openid,
                     msg_type=7,
@@ -613,18 +613,18 @@ class MyClient(botpy.Client):
                 )
                 self.msg_seq_counters[c_id] += 1
             except Exception as e:
-                print(f"图片发送失败: {e}")
+                print(f"Image send failed: {e}")
                 clean_text = self._clean_text(str(e))
                 if clean_text:
                     await self._send_text_message(message, clean_text)
 
     def _clean_text(self, text):
-        """三级内容清洗"""
-        # 移除图片标记
+        """Three-level content cleaning"""
+        # Remove image markers
         clean = re.sub(r'!\[.*?\]\(.*?\)', '', text)
-        # 移除超链接
+        # Remove hyperlinks
         clean = re.sub(r'\[.*?\]\(.*?\)', '', clean)
-        # 移除纯URL
+        # Remove pure URLs
         clean = re.sub(r'https?://\S+', '', clean)
         return clean.strip()
 
@@ -647,14 +647,14 @@ class MyClient(botpy.Client):
                     async with aiohttp.ClientSession() as session:
                         async with session.get(image_url) as response:
                             if response.status == 200:
-                                # 获取原始图像数据
+                                # Get original image data
                                 image_data = await response.read()
                                 
-                                # 检查是否为支持的格式
+                                # Check if supported format
                                 content_type = attachment.content_type.lower()
                                 if content_type not in ["image/png", "image/jpeg", "image/gif"]:
                                     try:
-                                        # 转换为JPG格式
+                                        # Convert to JPG format
                                         img = Image.open(io.BytesIO(image_data))
                                         if img.mode in ("RGBA", "LA", "P"):
                                             img = img.convert("RGB")
@@ -664,10 +664,10 @@ class MyClient(botpy.Client):
                                         image_data = jpg_buffer.getvalue()
                                         content_type = "image/jpeg"
                                     except Exception as e:
-                                        print(f"图像转换失败: {e}")
+                                        print(f"Image conversion failed: {e}")
                                         continue
                                 
-                                # 转换为Base64
+                                # Convert to Base64
                                 base64_data = base64.b64encode(image_data).decode("utf-8")
                                 data_uri = f"data:{content_type};base64,{base64_data}"
                                 
@@ -678,13 +678,13 @@ class MyClient(botpy.Client):
                                     }
                                 })
         if user_content:
-            user_content.append({"type": "text", "text": message.content+"图片链接："+json.dumps(image_url_list)})
+            user_content.append({"type": "text", "text": message.content+"Image links:"+json.dumps(image_url_list)})
         else:
             user_content = message.content
         g_id = message.group_openid
         if g_id not in self.memoryList:
             self.memoryList[g_id] = []
-        # 初始化群组状态
+        # Initialize group state
         if not hasattr(self, 'group_states'):
             self.group_states = {}
         self.group_states[g_id] = {
@@ -697,7 +697,7 @@ class MyClient(botpy.Client):
         if self.quickRestart:
             if "/重启" in message.content:
                 self.memoryList[g_id] = []
-                await self._send_group_text(message, "对话记录已重置。", state)
+                await self._send_group_text(message, "Conversation history has been reset.", state)
                 return
             if "/restart" in message.content: 
                 self.memoryList[g_id] = []
@@ -715,7 +715,7 @@ class MyClient(botpy.Client):
                 fileLinks = self.fileLinks[g_id]
             else:
                 fileLinks = []
-            # 流式API调用
+            # Streaming API call
             stream = await client.chat.completions.create(
                 model=self.QQAgent,
                 messages=self.memoryList[g_id],
@@ -744,11 +744,11 @@ class MyClient(botpy.Client):
                                 self.fileLinks[g_id] = []
                             self.fileLinks[g_id].append(tool_link)
                         if async_tool_id:
-                            # 判断async_tool_id在不在self.asyncToolsID[g_id]中
+                            # Check if async_tool_id is in self.asyncToolsID[g_id]
                             if async_tool_id not in self.asyncToolsID[g_id]:
                                 self.asyncToolsID[g_id].append(async_tool_id)
 
-                            # 如果async_tool_id在self.asyncToolsID[g_id]中，则删除
+                            # If async_tool_id is in self.asyncToolsID[g_id], remove it
                             else:
                                 self.asyncToolsID[g_id].remove(async_tool_id)
                        
@@ -757,15 +757,15 @@ class MyClient(botpy.Client):
                 if reasoning_content and self.reasoningVisible:
                     content = reasoning_content
                 
-                # 更新文本缓冲区
+                # Update text buffer
                 state["text_buffer"] += content
                 state["image_buffer"] += content
 
-                # 处理文本分段
+                # Process text segmentation
                 while True:
                     if self.separators == []:
                         break
-                    # 查找分隔符（。或\n）
+                    # Find separator (period or newline)
                     buffer = state["text_buffer"]
                     split_pos = -1
                     for i, c in enumerate(buffer):
@@ -775,28 +775,28 @@ class MyClient(botpy.Client):
                     if split_pos == -1:
                         break
 
-                    # 处理当前段落
+                    # Process current paragraph
                     current_chunk = buffer[:split_pos]
                     state["text_buffer"] = buffer[split_pos:]
                     
-                    # 清洗并发送文字
+                    # Clean and send text
                     clean_text = self._clean_group_text(current_chunk)
                     if clean_text:
                         await self._send_group_text(message, clean_text, state)
                     
-            # 提取图片到缓存
+            # Extract images to cache
             self._cache_group_images(g_id)
 
-            # 处理剩余文本
+            # Process remaining text
             if self.group_states[g_id]["text_buffer"]:
                 clean_text = self._clean_group_text(self.group_states[g_id]["text_buffer"])
                 if clean_text:
                     await self._send_group_text(message, clean_text, state)
 
-            # 发送缓存图片
+            # Send cached images
             await self._send_group_images(message, g_id)
 
-            # 记忆管理
+            # Memory management
             full_content = "".join(full_response)
             self.memoryList[g_id].append({"role": "assistant", "content": full_content})
             if self.memoryLimit > 0:
@@ -804,28 +804,28 @@ class MyClient(botpy.Client):
                     self.memoryList[g_id].pop(0)
 
         except Exception as e:
-            print(f"群聊处理异常: {e}")
+            print(f"Group chat processing exception: {e}")
             clean_text = self._clean_group_text(str(e))
             if clean_text:
                 await self._send_group_text(message, clean_text, state)
         finally:
-            # 清理状态
+            # Clean up state
             del self.group_states[g_id]
 
     def _cache_group_images(self, g_id):
-        """渐进式图片缓存"""
+        """Progressive image cache"""
         state = self.group_states[g_id]
         temp_buffer = state["image_buffer"]
         state["image_buffer"] = ""
         
-        # 匹配完整图片链接
+        # Match complete image link
         pattern = r'!\[.*?\]\((https?://[^\s\)]+)'
         matches = re.finditer(pattern, temp_buffer)
         for match in matches:
             state["image_cache"].append(match.group(1))
 
     async def _send_group_text(self, message, text, state):
-        """发送群聊文字消息"""
+        """Send group chat text message"""
         await message._api.post_group_message(
             group_openid=message.group_openid,
             msg_type=0,
@@ -836,25 +836,25 @@ class MyClient(botpy.Client):
         state["msg_seq"] += 1
 
     async def _send_group_images(self, message, g_id):
-        """批量发送群聊图片"""
+        """Batch send group chat images"""
         state = self.group_states.get(g_id, {})
         for url in state.get("image_cache", []):
             try:
-                # 链接有效性验证
+                # Link validity check
                 if not url.startswith(('http://', 'https://')):
                     continue
-                # 判断是否开启了图床功能
+                # Check if image hosting is enabled
                 url = await upload_image_host(url)
-                # 用request获取图片，保证图片存在
+                # Use request to get image, ensure image exists
                 res = requests.get(url)
-                print(f"发送图片: {url}")
-                # 上传群文件
+                print(f"Sending image: {url}")
+                # Upload group file
                 upload_media = await message._api.post_group_file(
                     group_openid=message.group_openid,
                     file_type=1,
                     url=url
                 )
-                # 发送群媒体消息
+                # Send group media message
                 await message._api.post_group_message(
                     group_openid=message.group_openid,
                     msg_type=7,
@@ -864,17 +864,17 @@ class MyClient(botpy.Client):
                 )
                 state["msg_seq"] += 1
             except Exception as e:
-                print(f"群图片发送失败: {e}")
+                print(f"Group image send failed: {e}")
                 clean_text = self._clean_group_text(str(e))
                 if clean_text:
                     await self._send_group_text(message, clean_text, state)
 
     def _clean_group_text(self, text):
-        """群聊文本三级清洗"""
-        # 移除图片标记
+        """Group chat text three-level cleaning"""
+        # Remove image markers
         clean = re.sub(r'!\[.*?\]\(.*?\)', '', text)
-        # 移除超链接
+        # Remove hyperlinks
         clean = re.sub(r'\[.*?\]\(.*?\)', '', clean)
-        # 移除纯URL
+        # Remove pure URLs
         clean = re.sub(r'https?://\S+', '', clean)
         return clean.strip()

@@ -16,7 +16,7 @@ from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice, Choic
 
 class DifyOpenAIAsync:
     """
-    Pure httpx wrapper of Dify -> OpenAI adapter
+    Pure httpx wrapped Dify -> OpenAI adapter
     External API fully aligned with OpenAI official SDK's async calling convention
     """
 
@@ -55,7 +55,7 @@ class DifyOpenAIAsync:
             stream: bool = False,
             **_,
         ):
-            # ---------- Build Dify parameters ----------
+            # ---------- Construct Dify required parameters ----------
             query = messages[-1]["content"] or ""
             inputs: Dict[str, Any] = {}
             for m in messages[:-1]:

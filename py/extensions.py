@@ -23,9 +23,9 @@ router = APIRouter(prefix="/api/extensions", tags=["extensions"])
 class Extension(BaseModel):
     id: str
     name: str
-    description: str = "无描述"
+    description: str = "No description"
     version: str = "1.0.0"
-    author: str = "未知"
+    author: str = "Unknown"
     systemPrompt: str = ""
     repository: str = ""
     backupRepository: Optional[str] = ""
@@ -49,20 +49,20 @@ class InstallResponse(BaseModel):
 class TaskStatusResponse(BaseModel):
     status: str  # "installing", "success", "error", "unknown"
     detail: str
-    progress: Optional[int] = None  # 0-100，可选
+    progress: Optional[int] = None  # 0-100, optional
     timestamp: Optional[float] = None
 
 
-# ==================== 工具函数 ====================
+# ==================== Utility functions ====================
 
 def _remove_readonly(func, path, exc_info):
-    """Windows 只读文件处理回调"""
+    """Windows readonly file handler callback"""
     os.chmod(path, stat.S_IWRITE)
     func(path)
 
 
 def robust_rmtree(target: Path, preserve: Optional[set] = None):
-    """安全删除目录，可选保留特定子目录"""
+    """Safely remove a directory tree, optionally preserving specified subdirectories"""
     target = Path(target)
     if not target.exists():
         return
@@ -91,7 +91,7 @@ def robust_rmtree(target: Path, preserve: Optional[set] = None):
 
 
 def make_tree_writable(target: Path):
-    """递归清除目录树的只读属性（Windows 专用）"""
+    """Recursively clear read-only attribute on directory tree (Windows only)"""
     if os.name != 'nt':
         return
     for root, dirs, files in os.walk(target):
@@ -108,7 +108,7 @@ def make_tree_writable(target: Path):
 
 
 def find_root_dir(temp_path: Path) -> Path:
-    """如果 zip 解压后只有 1 个一级目录且包含关键文件，则返回子目录"""
+    """If extracted archive has only one top-level directory containing key files, return that subdirectory"""
     entries = [p for p in temp_path.iterdir() if p.is_dir()]
     entry_files = ['index.html', 'index.js', 'package.json', 'manifest.json']
     
@@ -121,7 +121,7 @@ def find_root_dir(temp_path: Path) -> Path:
 
 
 def compute_deps_hash(package_json_path: Path) -> Optional[str]:
-    """计算依赖的指纹"""
+    """Compute dependency fingerprint"""
     if not package_json_path.exists():
         return None
     
@@ -142,7 +142,7 @@ def compute_deps_hash(package_json_path: Path) -> Optional[str]:
 
 
 def should_reuse_node_modules(old_pkg: Path, new_pkg: Path) -> bool:
-    """判断是否可以复用 node_modules"""
+    """Determine whether node_modules can be reused"""
     old_hash = compute_deps_hash(old_pkg)
     new_hash = compute_deps_hash(new_pkg)
     
@@ -153,14 +153,14 @@ def should_reuse_node_modules(old_pkg: Path, new_pkg: Path) -> bool:
 
 
 def github_url_to_zip(url: str) -> str:
-    """将 GitHub/Gitee 仓库 URL 转换为 ZIP 下载链接"""
+    """Convert GitHub/Gitee repository URL to ZIP download link"""
     url = url.strip().rstrip('/').removesuffix('.git')
     
     parsed = urlparse(url)
     path_parts = parsed.path.strip('/').split('/')
     
     if len(path_parts) < 2:
-        raise ValueError(f"无效的仓库 URL: {url}")
+        raise ValueError(f"Invalid repository URL: {url}")
     
     owner, repo = path_parts[0], path_parts[1]
     host = parsed.netloc.lower()
@@ -173,14 +173,14 @@ def github_url_to_zip(url: str) -> str:
         return f"{url}/archive/refs/heads/main.zip"
 
 
-# ==================== 安装任务管理 ====================
+# ==================== Installation task management ====================
 
-# 内存中的任务状态存储（生产环境建议用 Redis）
+# In-memory task status storage (use Redis for production)
 install_tasks: Dict[str, Dict[str, Any]] = {}
 
 
 def update_task_status(ext_id: str, status: str, detail: str, progress: Optional[int] = None):
-    """更新任务状态"""
+    """Update task status"""
     install_tasks[ext_id] = {
         "status": status,
         "detail": detail,
@@ -190,23 +190,23 @@ def update_task_status(ext_id: str, status: str, detail: str, progress: Optional
 
 
 def get_ext_id_from_url(url: str) -> str:
-    """从 URL 解析扩展 ID"""
+    """Parse extension ID from URL"""
     parsed = urlparse(url.strip().rstrip('/'))
     path_parts = parsed.path.strip('/').split('/')
     if len(path_parts) < 2:
-        raise ValueError("无效的仓库 URL")
+        raise ValueError("Invalid repository URL")
     return f"{path_parts[0]}_{path_parts[1]}"
 
 
 class GitHubInstallRequest(BaseModel):
-    url: str = Field(..., description="主仓库地址")
-    backupUrl: Optional[str] = Field("", description="备用仓库地址")
+    url: str = Field(..., description="Primary repository URL")
+    backupUrl: Optional[str] = Field("", description="Backup repository URL")
 
 
-# ==================== 核心安装逻辑 ====================
+# ==================== Core installation logic ====================
 
 async def download_zip(url: str, dest: Path, timeout: float = 60.0) -> None:
-    """异步下载 ZIP 文件"""
+    """Asynchronously download a ZIP file"""
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
         async with client.stream("GET", url) as resp:
             resp.raise_for_status()
@@ -216,7 +216,7 @@ async def download_zip(url: str, dest: Path, timeout: float = 60.0) -> None:
 
 
 def _do_zip_install(zip_url: str, temp_dir: Path, target: Path, ext_id: str) -> None:
-    """执行 ZIP 下载和解压安装"""
+    """Execute ZIP download and extract installation"""
     
     old_pkg = target / "package.json"
     old_node_modules = target / "node_modules"
@@ -234,14 +234,14 @@ def _do_zip_install(zip_url: str, temp_dir: Path, target: Path, ext_id: str) -> 
             
             if should_reuse_node_modules(old_pkg, new_pkg):
                 can_reuse = True
-                update_task_status(ext_id, "installing", "依赖未变更，保留 node_modules", 30)
+                update_task_status(ext_id, "installing", "Dependencies unchanged, preserving node_modules", 30)
             else:
-                update_task_status(ext_id, "installing", "依赖已变更，将重新安装", 30)
+                update_task_status(ext_id, "installing", "Dependencies changed, will reinstall", 30)
                 
             shutil.rmtree(temp_unpack)
             
         except Exception as e:
-            print(f"[{ext_id}] 无法比较依赖，将清理 node_modules: {e}")
+            print(f"[{ext_id}] Unable to compare dependencies, will clean node_modules: {e}")
             can_reuse = False
     else:
         zip_path = temp_dir / "new_repo.zip"
@@ -256,7 +256,7 @@ def _do_zip_install(zip_url: str, temp_dir: Path, target: Path, ext_id: str) -> 
         zip_path = temp_dir / "new_repo.zip"
         asyncio.run(download_zip(zip_url, zip_path))
     
-    update_task_status(ext_id, "installing", "正在解压文件...", 50)
+    update_task_status(ext_id, "installing", "Extracting files...", 50)
     
     unpack_dir = temp_dir / "unpacked"
     shutil.unpack_archive(zip_path, unpack_dir)
@@ -279,12 +279,12 @@ def _do_zip_install(zip_url: str, temp_dir: Path, target: Path, ext_id: str) -> 
     else:
         shutil.move(str(new_root), str(target))
     
-    update_task_status(ext_id, "installing", "文件解压完成", 80)
+    update_task_status(ext_id, "installing", "File extraction complete", 80)
 
 
 def _run_bg_install(repo_url: str, ext_id: str, backup_url: str = ""):
-    """后台安装任务"""
-    update_task_status(ext_id, "installing", "正在准备安装...", 0)
+    """Background installation task"""
+    update_task_status(ext_id, "installing", "Preparing installation...", 0)
     temp_dir = Path(tempfile.mkdtemp())
     
     try:
@@ -295,9 +295,9 @@ def _run_bg_install(repo_url: str, ext_id: str, backup_url: str = ""):
         main = repo_url.strip().rstrip('/') if repo_url else ""
         backup = backup_url.strip().rstrip('/') if backup_url else ""
         
-        update_task_status(ext_id, "installing", "检测网络环境...", 10)
-        
-        # 测试 GitHub 连通性
+        update_task_status(ext_id, "installing", "Detecting network environment...", 10)
+
+        # Test GitHub connectivity
         try:
             import httpx
             with httpx.Client(timeout=3) as c:
@@ -313,32 +313,32 @@ def _run_bg_install(repo_url: str, ext_id: str, backup_url: str = ""):
                 urls.append(github_url_to_zip(main))
         
         if not urls:
-            raise RuntimeError("没有可用的仓库地址")
+            raise RuntimeError("No available repository URLs")
         
         last_err = None
         for i, zip_url in enumerate(urls):
-            update_task_status(ext_id, "installing", f"正在从源 {i+1}/{len(urls)} 下载...", 20)
+            update_task_status(ext_id, "installing", f"Downloading from source {i+1}/{len(urls)}...", 20)
             
             try:
                 _do_zip_install(zip_url, temp_dir, target, ext_id)
                 
-                # 检查是否需要 npm install
+                # Check if npm install is needed
                 pkg_json = target / "package.json"
                 node_modules = target / "node_modules"
                 
                 if pkg_json.exists() and not node_modules.exists():
-                    update_task_status(ext_id, "installing", "正在安装 Node 依赖（可能需要几分钟）...", 85)
-                    # 这里可以调用 npm install，如果需要的话
-                    # 暂时跳过，由前端或下次启动时处理
+                    update_task_status(ext_id, "installing", "Installing Node dependencies (may take a few minutes)...", 85)
+                    # npm install can be called here if needed
+                    # Temporarily skipped, handled by frontend or next startup
                 
-                update_task_status(ext_id, "success", "安装完成", 100)
+                update_task_status(ext_id, "success", "Installation complete", 100)
                 return
                 
             except Exception as e:
                 last_err = e
                 continue
         
-        raise RuntimeError(f"所有源均下载失败: {last_err}")
+        raise RuntimeError(f"All sources failed to download: {last_err}")
         
     except Exception as e:
         update_task_status(ext_id, "error", str(e))
@@ -350,34 +350,34 @@ def _run_bg_install(repo_url: str, ext_id: str, backup_url: str = ""):
 
 
 def _run_zip_install(file_content: bytes, ext_id: str, filename: str = "upload.zip"):
-    """处理本地上传 ZIP 的后台安装"""
-    update_task_status(ext_id, "installing", "正在处理上传文件...", 0)
+    """Handle local uploaded ZIP installation"""
+    update_task_status(ext_id, "installing", "Processing uploaded file...", 0)
     temp_dir = Path(tempfile.mkdtemp())
     
     try:
         target = Path(EXT_DIR) / ext_id
         target.parent.mkdir(parents=True, exist_ok=True)
         
-        # 保存上传的文件
+        # Save uploaded file
         zip_path = temp_dir / filename
         with open(zip_path, "wb") as f:
             f.write(file_content)
         
-        update_task_status(ext_id, "installing", "正在解压...", 30)
-        
-        # 解压并分析
+        update_task_status(ext_id, "installing", "Extracting...", 30)
+
+        # Extract and analyze
         unpack_dir = temp_dir / "unpacked"
         shutil.unpack_archive(zip_path, unpack_dir)
         
         real_root = find_root_dir(unpack_dir)
         
-        # 验证基本结构
+        # Validate basic structure
         if not any((real_root / f).exists() for f in ['index.html', 'index.js', 'package.json']):
-            raise ValueError("ZIP 内容不符合扩展格式（缺少 index.html/index.js/package.json）")
-        
-        update_task_status(ext_id, "installing", "正在安装...", 60)
-        
-        # 如果已存在，先删除
+            raise ValueError("ZIP does not match extension format (missing index.html/index.js/package.json)")
+
+        update_task_status(ext_id, "installing", "Installing...", 60)
+
+        # If already exists, delete first
         if target.exists():
             robust_rmtree(target)
         
@@ -386,8 +386,8 @@ def _run_zip_install(file_content: bytes, ext_id: str, filename: str = "upload.z
         
         for item in real_root.iterdir():
             shutil.move(str(item), str(target))
-        
-        update_task_status(ext_id, "success", "安装完成", 100)
+
+        update_task_status(ext_id, "success", "Installation complete", 100)
         
     except Exception as e:
         update_task_status(ext_id, "error", str(e))
@@ -398,11 +398,11 @@ def _run_zip_install(file_content: bytes, ext_id: str, filename: str = "upload.z
         robust_rmtree(temp_dir)
 
 
-# ==================== API 路由 ====================
+# ==================== API routes ====================
 
 @router.get("/list", response_model=ExtensionsResponse)
 async def list_extensions():
-    """获取所有可用的扩展列表"""
+    """Get list of all available extensions"""
     try:
         extensions_dir = EXT_DIR
         
@@ -428,9 +428,9 @@ async def list_extensions():
                             extensions.append(Extension(
                                 id=ext_id,
                                 name=package_data.get("name", ext_id),
-                                description=package_data.get("description", "无描述"),
+                                description=package_data.get("description", "No description"),
                                 version=package_data.get("version", "1.0.0"),
-                                author=package_data.get("author", "未知"),
+                                author=package_data.get("author", "Unknown"),
                                 systemPrompt=package_data.get("systemPrompt", ""),
                                 repository=package_data.get("repository", ""),
                                 backupRepository=package_data.get("backupRepository", ""),
@@ -448,24 +448,24 @@ async def list_extensions():
         return ExtensionsResponse(extensions=extensions)
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"获取扩展列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get extension list: {str(e)}")
 
 
 @router.delete("/{ext_id}", status_code=204)
 async def delete_extension(ext_id: str):
-    """删除扩展"""
+    """Delete an extension"""
     target = Path(EXT_DIR) / ext_id
     if not target.exists():
-        raise HTTPException(status_code=404, detail="扩展不存在")
+        raise HTTPException(status_code=404, detail="Extension does not exist")
     try:
         robust_rmtree(target)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"删除失败: {e}")
+        raise HTTPException(status_code=500, detail=f"Deletion failed: {e}")
 
 
 @router.post("/install-from-github", response_model=InstallResponse)
 async def install_from_github(req: GitHubInstallRequest, background: BackgroundTasks):
-    """从 GitHub/Gitee 安装扩展（后台任务+轮询）"""
+    """Install extension from GitHub/Gitee (background task + polling)"""
     try:
         ext_id = get_ext_id_from_url(req.url)
     except ValueError as e:
@@ -474,67 +474,67 @@ async def install_from_github(req: GitHubInstallRequest, background: BackgroundT
     target = Path(EXT_DIR) / ext_id
     
     if target.exists():
-        raise HTTPException(status_code=409, detail="扩展已存在，请使用更新接口")
+        raise HTTPException(status_code=409, detail="Extension already exists, please use the update endpoint")
     
-    # 检查是否已有进行中的任务
+    # Check if there's already an in-progress task
     if ext_id in install_tasks and install_tasks[ext_id]["status"] == "installing":
-        return InstallResponse(ext_id=ext_id, status="installing", message="安装任务已在进行中")
-    
+        return InstallResponse(ext_id=ext_id, status="installing", message="Installation task already in progress")
+
     background.add_task(_run_bg_install, req.url, ext_id, req.backupUrl or "")
-    return InstallResponse(ext_id=ext_id, status="installing", message="后台安装任务已启动")
+    return InstallResponse(ext_id=ext_id, status="installing", message="Background installation task started")
 
 
 @router.get("/task-status/{ext_id}", response_model=TaskStatusResponse)
 async def get_task_status(ext_id: str):
-    """查询安装任务状态"""
+    """Query installation task status"""
     status = install_tasks.get(ext_id)
     if not status:
-        # 检查是否已安装完成（任务可能被清理）
+        # Check if already installed (task may have been cleaned up)
         target = Path(EXT_DIR) / ext_id
         if target.exists():
-            return TaskStatusResponse(status="success", detail="已安装", timestamp=time.time())
-        return TaskStatusResponse(status="unknown", detail="无此任务", timestamp=time.time())
+            return TaskStatusResponse(status="success", detail="Installed", timestamp=time.time())
+        return TaskStatusResponse(status="unknown", detail="No such task", timestamp=time.time())
     
     return TaskStatusResponse(**status)
 
 
 @router.post("/upload-zip", response_model=InstallResponse)
 async def upload_zip(file: UploadFile = File(...), background: BackgroundTasks = None):
-    """上传本地 ZIP 安装扩展（改为后台任务+轮询模式）"""
+    """Upload local ZIP to install extension (background task + polling mode)"""
     if not file.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="仅支持 zip 文件")
-    
+        raise HTTPException(status_code=400, detail="Only zip files are supported")
+
     ext_id = Path(file.filename).stem
     target = Path(EXT_DIR) / ext_id
-    
+
     if target.exists():
-        raise HTTPException(status_code=409, detail="扩展已存在")
-    
-    # 读取文件内容到内存
+        raise HTTPException(status_code=409, detail="Extension already exists")
+
+    # Read file content into memory
     content = await file.read()
     if len(content) == 0:
-        raise HTTPException(status_code=400, detail="空文件")
-    
-    # 检查是否已有进行中的任务
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    # Check if there's already an in-progress task
     if ext_id in install_tasks and install_tasks[ext_id]["status"] == "installing":
-        return InstallResponse(ext_id=ext_id, status="installing", message="安装任务已在进行中")
-    
-    # 启动后台任务
+        return InstallResponse(ext_id=ext_id, status="installing", message="Installation task already in progress")
+
+    # Start background task
     background.add_task(_run_zip_install, content, ext_id, file.filename)
-    
-    return InstallResponse(ext_id=ext_id, status="installing", message="后台安装任务已启动")
+
+    return InstallResponse(ext_id=ext_id, status="installing", message="Background installation task started")
 
 
 @router.put("/{ext_id}/update")
 async def update_extension(ext_id: str):
-    """更新扩展（ZIP 方式，智能保留 node_modules）"""
+    """Update extension (ZIP method, smart node_modules preservation)"""
     target = Path(EXT_DIR) / ext_id
     if not target.exists():
-        raise HTTPException(status_code=404, detail="扩展未安装")
-    
+        raise HTTPException(status_code=404, detail="Extension not installed")
+
     pkg_file = target / "package.json"
     if not pkg_file.exists():
-        raise HTTPException(status_code=400, detail="缺少 package.json")
+        raise HTTPException(status_code=400, detail="Missing package.json")
     
     try:
         meta = json.loads(pkg_file.read_text(encoding="utf-8"))
@@ -544,10 +544,10 @@ async def update_extension(ext_id: str):
         if meta.get("backupRepository"):
             repos.append(meta["backupRepository"].strip().rstrip("/"))
     except Exception:
-        raise HTTPException(status_code=400, detail="无法解析 package.json")
-    
+        raise HTTPException(status_code=400, detail="Cannot parse package.json")
+
     if not repos:
-        raise HTTPException(status_code=400, detail="缺少 repository 信息")
+        raise HTTPException(status_code=400, detail="Missing repository information")
     
     try:
         with httpx.Client(timeout=3) as c:
@@ -568,12 +568,12 @@ async def update_extension(ext_id: str):
                 last_err = e
                 continue
         
-        raise HTTPException(status_code=500, detail=f"更新失败: {last_err}")
+        raise HTTPException(status_code=500, detail=f"Update failed: {last_err}")
     finally:
         robust_rmtree(temp_dir)
 
 
-# ==================== 远程插件列表 ====================
+# ==================== Remote plugin list ====================
 
 class RemotePluginItem(BaseModel):
     id: str
@@ -593,7 +593,7 @@ class RemotePluginList(BaseModel):
 
 @router.get("/remote-list", response_model=RemotePluginList)
 async def remote_plugin_list():
-    """获取远程插件列表"""
+    """Get remote plugin list"""
     github_raw = "https://raw.githubusercontent.com/super-agent-party/super-agent-party.github.io/main/plugins.json"
     gitee_raw = "https://gitee.com/super-agent-party/super-agent-party.github.io/raw/main/plugins.json"
     
@@ -609,7 +609,7 @@ async def remote_plugin_list():
             if url == gitee_raw:
                 raise HTTPException(
                     status_code=502,
-                    detail="无法获取远程插件列表"
+                    detail="Unable to fetch remote plugin list"
                 )
             continue
     
@@ -631,9 +631,9 @@ async def remote_plugin_list():
         
         return RemotePluginItem(
             id=ext_id,
-            name=p.get("name", "未命名"),
+            name=p.get("name", "Untitled"),
             description=p.get("description", ""),
-            author=p.get("author", "未知"),
+            author=p.get("author", "Unknown"),
             version=p.get("version", "1.0.0"),
             category=p.get("category", "Unknown"),
             repository=p.get("repository", ""),
@@ -644,7 +644,7 @@ async def remote_plugin_list():
     return RemotePluginList(plugins=[_with_status(p) for p in remote])
 
 
-# ==================== Node.js 支持 ====================
+# ==================== Node.js support ====================
 
 http_sess: ClientSession | None = None
 
@@ -665,35 +665,35 @@ async def shutdown():
 
 @router.post("/{ext_id}/start-node")
 async def start_node(ext_id: str):
-    """启动 Node 扩展"""
+    """Start Node extension"""
     ext_dir = Path(EXT_DIR) / ext_id
     node_entry = ext_dir / "index.js"
-    
+
     if not node_entry.exists():
         return {"mode": "static"}
-    
+
     try:
         port = await node_mgr.start(ext_id)
         return {"mode": "node", "port": port}
     except Exception as e:
         node_modules = ext_dir / "node_modules"
         if not node_modules.exists():
-            return {"mode": "error", "message": f"缺少依赖，请检查 node_modules: {e}"}
+            return {"mode": "error", "message": f"Missing dependencies, please check node_modules: {e}"}
         return {"mode": "error", "message": str(e)}
 
 
 @router.post("/{ext_id}/stop-node")
 async def stop_node(ext_id: str):
-    """停止 Node 扩展"""
+    """Stop Node extension"""
     await node_mgr.stop(ext_id)
     return {"status": "stopped"}
 
 
 @router.api_route("/{ext_id}/node/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy(ext_id: str, path: str, request: Request):
-    """代理 Node 扩展的 HTTP 请求"""
+    """Proxy HTTP requests for Node extensions"""
     if ext_id not in node_mgr.exts:
-        raise HTTPException(404, "扩展未启动")
+        raise HTTPException(404, "Extension not started")
     
     port = node_mgr.exts[ext_id].port
     url = f"http://127.0.0.1:{port}/{path}"

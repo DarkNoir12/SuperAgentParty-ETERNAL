@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 import json
-from zoneinfo import ZoneInfo  # Python 内置模块
+from zoneinfo import ZoneInfo  # Python built-in module
 import aiohttp
 import requests
 from tzlocal import get_localzone
@@ -9,31 +9,31 @@ from py.get_setting import load_settings
 import wikipediaapi
 import arxiv
 from typing import Dict, List, Optional
-# 获取本地时区（tzinfo 类型）
-local_timezone = get_localzone()  # 这个返回的是 tzinfo 类型
+# Get local timezone (tzinfo type)
+local_timezone = get_localzone()  # Returns a tzinfo type
 
 async def time_async(timezone: str = None):
-    # 如果没有传入 timezone，则使用本地时区
+    # If timezone is not provided, use local timezone
     tz = ZoneInfo(timezone) if timezone else local_timezone
-    
-    # 获取当前时间（带时区信息）
+
+    # Get current time (with timezone info)
     now = datetime.now(tz=tz)
-    
-    # 格式化输出
-    time_message = f"当前时间：{now.strftime('%Y-%m-%d %H:%M:%S')}，时区：{tz}"
+
+    # Format output
+    time_message = f"Current time: {now.strftime('%Y-%m-%d %H:%M:%S')}, Timezone: {tz}"
     return time_message
 
 time_tool = {
     "type": "function",
     "function": {
         "name": "time_async",
-        "description": f"获取当前时间（带时区信息）",
+        "description": "Get current time (with timezone info)",
         "parameters": {
             "type": "object",
             "properties": {
                 "timezone": {
                     "type": "string",
-                    "description": "当前时区，默认为本地时区，格式为：Asia/Shanghai",
+                    "description": "Current timezone, defaults to local timezone. Format: Asia/Shanghai",
                 },
             },
             "required": [],
@@ -42,16 +42,16 @@ time_tool = {
 }
 
 async def _get_lat_lon(city: str) -> Dict[str, float]:
-    """返回 {"latitude": xx, "longitude": yy, "timezone": "Asia/Shanghai"}"""
+    """Return {"latitude": xx, "longitude": yy, "timezone": "Asia/Shanghai"}"""
     url = "https://geocoding-api.open-meteo.com/v1/search"
-    params = {"name": city, "count": 1, "language": "zh"}
+    params = {"name": city, "count": 1, "language": "en"}
     async with aiohttp.ClientSession() as session:
         async with session.get(url, params=params) as resp:
             if resp.status != 200:
-                raise RuntimeError("地理编码请求失败")
+                raise RuntimeError("Geocoding request failed")
             data = await resp.json()
     if not data.get("results"):
-        raise RuntimeError(f"未找到城市: {city}")
+        raise RuntimeError(f"City not found: {city}")
     r = data["results"][0]
     return {
         "latitude": r["latitude"],
@@ -61,7 +61,7 @@ async def _get_lat_lon(city: str) -> Dict[str, float]:
 
 
 async def _call_open_meteo(lat: float, lon: float, timezone: str, forecast: bool, days: int):
-    """forecast=True 时返回 7-day 预报，否则返回当前实时"""
+    """When forecast=True returns 7-day forecast, otherwise returns current weather"""
     if forecast:
         url = "https://api.open-meteo.com/v1/forecast"
         params = {
@@ -83,57 +83,57 @@ async def _call_open_meteo(lat: float, lon: float, timezone: str, forecast: bool
     async with aiohttp.ClientSession() as session:
         async with session.get(url, params=params) as resp:
             if resp.status != 200:
-                raise RuntimeError("天气接口请求失败")
+                raise RuntimeError("Weather API request failed")
             return await resp.json()
 
 
 _WCODE_MAP = {
-    0: "晴",
-    1: "多云",
-    2: "少云",
-    3: "晴间多云",
-    45: "雾",
-    48: "雾凇",
-    51: "毛毛雨",
-    53: "小雨",
-    55: "中雨",
-    61: "小雨",
-    63: "中雨",
-    65: "大雨",
-    71: "小雪",
-    73: "中雪",
-    75: "大雪",
-    95: "雷暴",
-    96: "雷暴伴冰雹",
-    99: "强雷暴伴冰雹",
+    0: "Clear sky",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Depositing rime fog",
+    51: "Light drizzle",
+    53: "Moderate drizzle",
+    55: "Dense drizzle",
+    61: "Slight rain",
+    63: "Moderate rain",
+    65: "Heavy rain",
+    71: "Slight snow fall",
+    73: "Moderate snow fall",
+    75: "Heavy snow fall",
+    95: "Thunderstorm",
+    96: "Thunderstorm with slight hail",
+    99: "Thunderstorm with heavy hail",
 }
 
 
 def _desc(code: int) -> str:
-    return _WCODE_MAP.get(code, "未知")
+    return _WCODE_MAP.get(code, "Unknown")
 
 
 async def get_weather_async(city: str, forecast: bool = False, days: int = 1) -> str:
     """
-    查询城市天气（实时或预报）—— 改用 Open-Meteo
+    Query city weather (current or forecast) -- using Open-Meteo
     """
     try:
-        # 4.1 经纬度
+        # 4.1 Get lat/lon
         geo = await _get_lat_lon(city)
 
-        # 4.2 天气数据
+        # 4.2 Get weather data
         data = await _call_open_meteo(
             geo["latitude"], geo["longitude"], geo["timezone"], forecast, days
         )
 
-        # 4.3 格式化输出，尽量沿用你原来的字符串模板
+        # 4.3 Format output, keeping the original string template style
         if forecast:
             daily = data["daily"]
             result = [
-                f"{city}的{days}天天气预报:",
-                "概况: 基于Open-Meteo全球模式",
-                "严重程度: 无",
-                "每日预报:",
+                f"{days}-day weather forecast for {city}:",
+                "Overview: Based on Open-Meteo global model",
+                "Severity: None",
+                "Daily forecast:",
             ]
             for i in range(days):
                 date = daily["time"][i]
@@ -141,43 +141,43 @@ async def get_weather_async(city: str, forecast: bool = False, days: int = 1) ->
                 tmin = daily["temperature_2m_min"][i]
                 code = daily["weathercode"][i]
                 result.append(
-                    f"- {date}: 白天{tmax}°C/{_desc(code)}, 夜间{tmin}°C/{_desc(code)}"
+                    f"- {date}: Day {tmax}°C/{_desc(code)}, Night {tmin}°C/{_desc(code)}"
                 )
             return "\n".join(result)
 
         else:
             cw = data["current_weather"]
             return (
-                f"{city}实时天气:\n"
-                f"温度: {cw['temperature']}°C\n"
-                f"天气状况: {_desc(cw['weathercode'])}\n"
-                f"相对湿度: 暂无\n"
-                f"风速: {cw['windspeed']} km/h"
+                f"Current weather for {city}:\n"
+                f"Temperature: {cw['temperature']}°C\n"
+                f"Conditions: {_desc(cw['weathercode'])}\n"
+                f"Humidity: Not available\n"
+                f"Wind speed: {cw['windspeed']} km/h"
             )
 
     except Exception as e:
-        return f"查询天气时出错: {str(e)}"
+        return f"Error querying weather: {str(e)}"
     
 weather_tool = {
     "type": "function",
     "function": {
         "name": "get_weather_async",
-        "description": "查询城市天气（实时或预报）",
+        "description": "Query city weather (current or forecast)",
         "parameters": {
             "type": "object",
             "properties": {
                 "city": {
                     "type": "string",
-                    "description": "城市名称，如：北京、New York",
+                    "description": "City name, e.g., Beijing, New York",
                 },
                 "forecast": {
                     "type": "boolean",
-                    "description": "是否为天气预报（false为实时天气）",
+                    "description": "Whether to return forecast (false for current weather)",
                     "default": False
                 },
                 "days": {
                     "type": "integer",
-                    "description": "预报天数为1到7天",
+                    "description": "Number of forecast days (1 to 7)",
                     "default": 1,
                     "minimum": 1,
                     "maximum": 7
@@ -190,49 +190,49 @@ weather_tool = {
 
 async def get_location_coordinates_async(city: str) -> str:
     """
-    查询城市的经纬度信息（改用 Open-Meteo GeoCoding）
-    返回格式与原来完全一致，方便无痛替换。
+    Query city coordinates and location info (using Open-Meteo GeoCoding)
+    Returns format identical to the original for seamless replacement.
     """
     try:
-        # 1. 请求 Open-Meteo 地理编码
+        # 1. Request Open-Meteo geocoding
         url = "https://geocoding-api.open-meteo.com/v1/search"
-        params = {"name": city, "count": 1, "language": "zh"}
+        params = {"name": city, "count": 1, "language": "en"}
 
         async with aiohttp.ClientSession() as session:
             async with session.get(url, params=params) as resp:
                 if resp.status != 200:
-                    return f"查询位置信息时出错: HTTP {resp.status}"
+                    return f"Error querying location info: HTTP {resp.status}"
                 data = await resp.json()
 
         if not data.get("results"):
-            return f"无法找到城市{city}的位置信息"
+            return f"Unable to find location info for city: {city}"
 
         r = data["results"][0]
 
-        # 2. 拼装成跟原来一致的字符串
+        # 2. Format string consistent with original
         return (
-            f"{city}的位置信息:\n"
-            f"名称: {r.get('name', '未知')} ({r.get('name', '未知')})\n"
-            f"国家: {r.get('country', '未知')}\n"
-            f"行政区: {r.get('admin1', '未知')}\n"
-            f"经纬度: {r.get('latitude', '未知')}, {r.get('longitude', '未知')}\n"
-            f"时区: {r.get('timezone', '未知')}"
+            f"Location info for {city}:\n"
+            f"Name: {r.get('name', 'Unknown')} ({r.get('name', 'Unknown')})\n"
+            f"Country: {r.get('country', 'Unknown')}\n"
+            f"Admin region: {r.get('admin1', 'Unknown')}\n"
+            f"Coordinates: {r.get('latitude', 'Unknown')}, {r.get('longitude', 'Unknown')}\n"
+            f"Timezone: {r.get('timezone', 'Unknown')}"
         )
 
     except Exception as e:
-        return f"查询位置信息时出错: {str(e)}"
+        return f"Error querying location info: {str(e)}"
 
 location_tool = {
     "type": "function",
     "function": {
         "name": "get_location_coordinates_async",
-        "description": "查询城市的经纬度和位置信息",
+        "description": "Query city coordinates and location info",
         "parameters": {
             "type": "object",
             "properties": {
                 "city": {
                     "type": "string",
-                    "description": "城市名称，如：北京、New York",
+                    "description": "City name, e.g., Beijing, New York",
                 },
             },
             "required": ["city"],
@@ -240,29 +240,31 @@ location_tool = {
     },
 }
 
-async def get_weather_by_city_async(city: str,lang:str="zh-CN",product:str="astro") -> str:
+async def get_weather_by_city_async(city: str,lang:str="en-US",product:str="astro") -> str:
     """
-    根据城市名称获取7timer天气数据（JSON + 图片URL）
-    
-    :param city: 城市名称（如 "北京"、"New York"）
-    :return: 格式化的字符串，包含JSON数据和图片URL
+    Get 7timer weather data by city name (JSON + image URL)
+
+    :param city: City name (e.g., "Beijing", "New York")
+    :param lang: Language code (default "en-US")
+    :param product: Product type (default "astro")
+    :return: Formatted string containing JSON data and image URL
     """
     try:
-        # 1. 获取城市经纬度
+        # 1. Get city coordinates
         location_info = await get_location_coordinates_async(city)
-        
-        # 解析经纬度（假设返回格式包含 "经纬度: 纬度, 经度"）
-        if "经纬度:" not in location_info:
-            return f"无法获取 {city} 的经纬度信息"
-        
-        # 提取经纬度（示例解析逻辑，可能需要调整）
-        geo_part = location_info.split("经纬度:")[1].split("\n")[0].strip()
+
+        # Parse coordinates (assumes return format contains "Coordinates: lat, lon")
+        if "Coordinates:" not in location_info:
+            return f"Unable to get coordinates for {city}"
+
+        # Extract coordinates (example parsing logic, may need adjustment)
+        geo_part = location_info.split("Coordinates:")[1].split("\n")[0].strip()
         lat, lon = map(float, geo_part.split(","))
-        
-        # 2. 调用7timer API获取天气数据
+
+        # 2. Call 7timer API to get weather data
         base_url = "http://www.7timer.info/bin/astro.php"
-        
-        # 获取图片URL
+
+        # Get image URL
         img_params = {
             "lon": lon,
             "lat": lat,
@@ -272,14 +274,14 @@ async def get_weather_by_city_async(city: str,lang:str="zh-CN",product:str="astr
             "tzshift": 0,
         }
         img_url = f"{base_url}?{'&'.join([f'{k}={v}' for k, v in img_params.items()])}"
-        
-        # 获取JSON数据
+
+        # Get JSON data
         data_params = {
             "lon": lon,
             "lat": lat,
             "ac": 0,
             "product": product,
-            "lang": "en",
+            "lang": lang or "en",
             "unit": "metric",
             "output": "json",
             "tzshift": 0,
@@ -287,33 +289,33 @@ async def get_weather_by_city_async(city: str,lang:str="zh-CN",product:str="astr
         data_response = requests.get(base_url, params=data_params)
         data_response.raise_for_status()
         weather_data = data_response.json()
-        
-        # 3. 返回格式化结果
+
+        # 3. Return formatted result
         return f"{json.dumps(weather_data, ensure_ascii=False)}\n![image]({img_url})"
-    
+
     except Exception as e:
-        return f"获取天气数据时出错: {str(e)}"
+        return f"Error getting weather data: {str(e)}"
 
 
 timer_weather_tool = {
     "type": "function",
     "function": {
         "name": "get_weather_by_city_async",
-        "description": "更加详细的天气信息，包含天气晴雨表图片。根据城市名称获取7timer天气数据（JSON + 图片URL）。请按照![image](image_url)格式返回图片URL",
+        "description": "Detailed weather information including weather chronology image. Get 7timer weather data by city name (JSON + image URL). Return image URL in ![image](image_url) format",
         "parameters": {
             "type": "object",
             "properties": {
                 "city": {
                     "type": "string",
-                    "description": "城市名称，如：北京、New York",
+                    "description": "City name, e.g., Beijing, New York",
                 },
                 "lang": {
                     "type": "string",
-                    "description": "语言，如：zh-CN、en-US",
+                    "description": "Language code, e.g., en-US, zh-CN",
                 },
                 "product": {
                     "type": "string",
-                    "description": "产品类型，默认为astro，可选值：astro、civil，astro时，返回3 天（72 小时） 的逐 3 小时天气预报。civil时，返回7 天的天气预报（每天 2-4 个时间点）",
+                    "description": "Product type, default is astro. Options: astro, civil. astro returns 3-day (72 hours) 3-hourly forecast. civil returns 7-day forecast (2-4 time points per day)",
                     "enum": ["astro", "civil"]
                 }
             },
@@ -325,53 +327,53 @@ timer_weather_tool = {
 
 
 async def get_wikipedia_summary_and_sections(
-    topic: str, 
-    language: str = "zh"
+    topic: str,
+    language: str = "en"
 ) -> str:
     """
-    获取维基百科上某个主题的摘要和所有章节名称（字符串格式返回）
-    
-    :param topic: 要查询的主题
-    :param language: 语言代码，默认为"zh"(中文)
-    :param user_agent: 自定义用户代理
-    :return: 包含摘要和章节列表的字符串，若页面不存在则返回错误信息
+    Get summary and all section titles from Wikipedia for a given topic (returned as string)
+
+    :param topic: Topic to query
+    :param language: Language code, default "en" (English)
+    :param user_agent: Custom user agent
+    :return: String containing summary and section list, or error message if page does not exist
     """
     wiki_wiki = wikipediaapi.Wikipedia(
         language=language,
         extract_format=wikipediaapi.ExtractFormat.WIKI,
         user_agent="super-agent-party"
     )
-    
+
     page = wiki_wiki.page(topic)
-    
+
     if not page.exists():
-        return f"维基百科上找不到关于'{topic}'的页面（语言: {language}）"
-    
+        return f"Wikipedia page for '{topic}' not found (language: {language})"
+
     result = {
-        "标题": page.title,
-        "摘要": page.summary,
+        "title": page.title,
+        "summary": page.summary,
         "URL": page.fullurl,
-        "章节列表": [section.title for section in page.sections]
+        "sections": [section.title for section in page.sections]
     }
-    
+
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 wikipedia_summary_tool = {
     "type": "function",
     "function": {
         "name": "get_wikipedia_summary_and_sections",
-        "description": "获取维基百科上某个主题的摘要和所有章节名称",
+        "description": "Get summary and all section titles from Wikipedia for a given topic",
         "parameters": {
             "type": "object",
             "properties": {
                 "topic": {
                     "type": "string",
-                    "description": "要查询的主题名称",
+                    "description": "Topic name to query",
                 },
                 "language": {
                     "type": "string",
-                    "description": "语言代码，如zh(中文)、en(英文)",
-                    "default": "zh"
+                    "description": "Language code, e.g., en (English), zh (Chinese)",
+                    "default": "en"
                 },
             },
             "required": ["topic"],
@@ -380,62 +382,62 @@ wikipedia_summary_tool = {
 }
 
 async def get_wikipedia_section_content(
-    topic: str, 
-    section_title: str, 
-    language: str = "zh"
+    topic: str,
+    section_title: str,
+    language: str = "en"
 ) -> str:
     """
-    获取维基百科上某个主题特定章节的详细内容（字符串格式返回）
-    
-    :param topic: 要查询的主题
-    :param section_title: 章节标题
-    :param language: 语言代码，默认为"zh"(中文)
-    :param user_agent: 自定义用户代理
-    :return: 包含章节详细内容的字符串，若页面或章节不存在则返回错误信息
+    Get detailed content of a specific section from Wikipedia for a given topic (returned as string)
+
+    :param topic: Topic to query
+    :param section_title: Section title
+    :param language: Language code, default "en" (English)
+    :param user_agent: Custom user agent
+    :return: String containing section content, or error message if page or section does not exist
     """
     wiki_wiki = wikipediaapi.Wikipedia(
         language=language,
         extract_format=wikipediaapi.ExtractFormat.WIKI,
         user_agent="super-agent-party"
     )
-    
+
     page = wiki_wiki.page(topic)
-    
+
     if not page.exists():
-        return f"维基百科上找不到关于'{topic}'的页面（语言: {language}）"
-    
+        return f"Wikipedia page for '{topic}' not found (language: {language})"
+
     for section in page.sections:
         if section.title == section_title:
             result = {
-                "主题": page.title,
-                "章节标题": section.title,
-                "内容": section.text,
+                "topic": page.title,
+                "section_title": section.title,
+                "content": section.text,
                 "URL": page.fullurl
             }
             return json.dumps(result, ensure_ascii=False, indent=2)
-    
-    return f"在'{topic}'页面中找不到标题为'{section_title}'的章节"
+
+    return f"Section titled '{section_title}' not found in '{topic}' page"
 
 wikipedia_section_tool = {
     "type": "function",
     "function": {
         "name": "get_wikipedia_section_content",
-        "description": "获取维基百科上某个主题特定章节的详细内容，你需要先调用get_wikipedia_summary_and_sections获取章节列表",
+        "description": "Get detailed content of a specific section from Wikipedia. You must first call get_wikipedia_summary_and_sections to get the section list",
         "parameters": {
             "type": "object",
             "properties": {
                 "topic": {
                     "type": "string",
-                    "description": "要查询的主题名称",
+                    "description": "Topic name to query",
                 },
                 "section_title": {
                     "type": "string",
-                    "description": "要获取的章节标题",
+                    "description": "Section title to retrieve",
                 },
                 "language": {
                     "type": "string",
-                    "description": "语言代码，如zh(中文)、en(英文)",
-                    "default": "zh"
+                    "description": "Language code, e.g., en (English), zh (Chinese)",
+                    "default": "en"
                 }
             },
             "required": ["topic", "section_title"],
@@ -453,23 +455,23 @@ async def search_arxiv_papers(
     return_fields: Optional[List[str]] = None
 ) -> str:
     """
-    搜索arXiv论文并返回结构化结果
-    
-    :param query: 搜索关键词或查询语句
-    :param max_results: 返回的最大结果数 (默认5)
-    :param sort_by: 排序方式 ("relevance", "submittedDate", "lastUpdatedDate")
-    :param sort_order: 排序顺序 ("ascending" 或 "descending")
-    :param return_fields: 指定返回的字段列表
-    :return: JSON格式的搜索结果
+    Search arXiv papers and return structured results
+
+    :param query: Search keyword or query string
+    :param max_results: Maximum number of results to return (default 5)
+    :param sort_by: Sort method ("relevance", "submittedDate", "lastUpdatedDate")
+    :param sort_order: Sort order ("ascending" or "descending")
+    :param return_fields: List of fields to return
+    :return: JSON formatted search results
     """
-    # 设置默认返回字段
+    # Set default return fields
     default_fields = [
-        "title", "authors", "summary", "published", 
+        "title", "authors", "summary", "published",
         "pdf_url", "doi", "primary_category"
     ]
     return_fields = return_fields or default_fields
-    
-    # 包装同步操作为异步
+
+    # Wrap synchronous operation as async
     def sync_search():
         search = arxiv.Search(
             query=query,
@@ -478,12 +480,12 @@ async def search_arxiv_papers(
             sort_order=arxiv.SortOrder(sort_order)
         )
         return list(search.results())
-    
+
     results = []
     try:
-        # 在线程池中执行同步操作
+        # Execute synchronous operation in thread pool
         papers = await asyncio.to_thread(sync_search)
-        
+
         for result in papers:
             paper_info = {
                 "title": result.title,
@@ -495,55 +497,55 @@ async def search_arxiv_papers(
                 "primary_category": result.primary_category,
                 "entry_id": result.entry_id
             }
-            # 过滤字段
+            # Filter fields
             filtered = {k: v for k, v in paper_info.items() if k in return_fields}
             results.append(filtered)
-            
+
         if not results:
-            return json.dumps({"error": f"未找到与'{query}'相关的论文"}, ensure_ascii=False)
-            
+            return json.dumps({"error": f"No papers found for '{query}'"}, ensure_ascii=False)
+
         return json.dumps({
             "query": query,
             "count": len(results),
             "results": results
         }, ensure_ascii=False)
-        
+
     except Exception as e:
-        return json.dumps({"error": f"搜索失败: {str(e)}"}, ensure_ascii=False)
+        return json.dumps({"error": f"Search failed: {str(e)}"}, ensure_ascii=False)
 
 arxiv_tool = {
     "type": "function",
     "function": {
         "name": "search_arxiv_papers",
-        "description": "搜索arXiv学术论文数据库，获取论文标题、作者、摘要、PDF链接等信息",
+        "description": "Search arXiv academic paper database, get paper titles, authors, abstracts, PDF links, etc.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "搜索英文的关键词或查询语句，例如:'quantum machine learning'或'ti:transformer AND cat:cs.CL'",
+                    "description": "Search keywords or query string in English, e.g., 'quantum machine learning' or 'ti:transformer AND cat:cs.CL'",
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": "返回结果数量(1-100)",
+                    "description": "Number of results to return (1-100)",
                     "default": 5
                 },
                 "sort_by": {
                     "type": "string",
                     "enum": ["relevance", "submittedDate", "lastUpdatedDate"],
-                    "description": "排序方式",
+                    "description": "Sort method",
                     "default": "relevance"
                 },
                 "sort_order": {
                     "type": "string",
                     "enum": ["ascending", "descending"],
-                    "description": "排序顺序",
+                    "description": "Sort order",
                     "default": "descending"
                 },
                 "return_fields": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "指定返回字段，如['title','authors','pdf_url']",
+                    "description": "Specify return fields, e.g., ['title','authors','pdf_url']",
                 }
             },
             "required": ["query"],

@@ -7,11 +7,11 @@ from typing import Optional, Callable
 
 class YouTubeDMClient:
     """
-    极简轮询客户端
-    用法：client = YouTubeDMClient(api_key, video_id, on_message)
-          client.start()   # 非阻塞，内部启动线程
+    Minimal polling client
+    Usage: client = YouTubeDMClient(api_key, video_id, on_message)
+          client.start()   # Non-blocking, starts internal thread
           ...
-          client.stop()    # 线程安全退出
+          client.stop()    # Thread-safe shutdown
     """
     def __init__(self,
                  api_key: str,
@@ -29,9 +29,9 @@ class YouTubeDMClient:
         self._stop_evt = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
-    # --------- 外部调用 ---------
+    # --------- External API ---------
     def start(self):
-        """非阻塞启动"""
+        """Non-blocking start"""
         if self._thread and self._thread.is_alive():
             return
         self._stop_evt.clear()
@@ -39,23 +39,23 @@ class YouTubeDMClient:
         self._thread.start()
 
     def stop(self):
-        """线程安全停止"""
+        """Thread-safe stop"""
         self._stop_evt.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=self.poll_interval + 1)
 
-    # --------- 内部轮询 ---------
+    # --------- Internal polling ---------
     def _run(self):
         self._chat_id = self._get_live_chat_id()
-        print('[YouTube] got chat_id:', self._chat_id)   # ← 新增
+        print('[YouTube] got chat_id:', self._chat_id)
         if not self._chat_id:
-            print('[YouTube] 未开播，线程退出')
+            print('[YouTube] Not live, thread exiting')
             return
 
         while not self._stop_evt.is_set():
             try:
                 self._poll_once()
-                print('[YouTube] poll_once done')        # ← 新增
+                print('[YouTube] poll_once done')
             except Exception as e:
                 print('[YouTube] poll error:', e)
             time.sleep(self.poll_interval)
@@ -87,7 +87,7 @@ class YouTubeDMClient:
                 "danmu_type": "danmaku",
                 "platform": "youtube"
             }
-            # 关键：把消息抛给回调
+            # Key: pass the message to the callback
             self.on_message(msg)
 
         self._page_token = rsp.get("nextPageToken")

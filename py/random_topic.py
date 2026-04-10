@@ -3,7 +3,7 @@ from typing import List, Optional, Union
 from py.get_setting import load_settings
 
 
-# 默认的基础 URL
+# Default base URL
 DEFAULT_BASE_URL = "https://topics-after-party.zeabur.app"
 
 async def get_random_topics(
@@ -13,12 +13,12 @@ async def get_random_topics(
     depth: Optional[int] = None,
     category: Optional[str] = None,
     exclude: Optional[Union[str, List[str]]] = None
-) -> str:  # 注意：返回值类型提示从 dict 改为了 str
+) -> str:  # Note: return type hint changed from dict to str
     """
-    获取随机话题并返回格式化的 Markdown 文本
+    Get random topics and return formatted Markdown text.
     """
     try:
-        settings = await load_settings() # 假设这是你的配置加载逻辑
+        settings = await load_settings()  # Assume this is your config loading logic
         base_url = settings["tools"]["randomTopic"].get("baseURL", DEFAULT_BASE_URL)
         endpoint = f"{base_url}/api/topic"
         
@@ -40,72 +40,72 @@ async def get_random_topics(
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
 
-        # 发送请求
+        # Send request
         response = requests.get(endpoint, params=params, headers=headers)
         response.raise_for_status()
-        
-        # --- 解析逻辑开始 ---
+
+        # --- Parsing logic starts ---
         res_json = response.json()
-        
-        # 1. 检查 API 状态码
+
+        # 1. Check API status code
         if res_json.get("code") != 200:
-            return f"❌ 获取话题失败: API 返回错误代码 {res_json.get('code')}"
+            return f"Failed to get topic: API returned error code {res_json.get('code')}"
 
         data_list = res_json.get("data", [])
-        
-        # 2. 如果没有数据
-        if not data_list:
-            return "📭 未找到符合条件的话题。"
 
-        # 3. 格式化为 Markdown
+        # 2. If no data
+        if not data_list:
+            return "No topics found matching the criteria."
+
+        # 3. Format as Markdown
         md_output = []
         for idx, item in enumerate(data_list, 1):
-            # 提取字段
+            # Extract fields
             text = item.get("text", "")
-            cat = item.get("category", "未知")
+            cat = item.get("category", "Unknown")
             tags = item.get("tags", [])
             follow_ups = item.get("follow_ups", [])
-            # mood = item.get("mood", "") # 可选：是否需要展示情绪
+            # mood = item.get("mood", "")  # Optional: whether to display mood
 
-            # 构建单个话题块
-            # 格式：1. [分类] 话题内容
+            # Build single topic block
+            # Format: 1. [Category] Topic content
             topic_str = f"\n\n{idx}. **[{cat}]** {text}"
-            
-            # 添加标签 (可选)
+
+            # Add tags (optional)
             if tags:
                 tag_str = " ".join([f"`#{t}`" for t in tags])
-                topic_str += f"\n\n   > 🏷️ {tag_str}"
-            
-            # 添加追问 (可选)
+                topic_str += f"\n\n   > Tags: {tag_str}"
+
+            # Add follow-up questions (optional)
             if follow_ups:
-                topic_str += "\n\n   > 🗣️ **追问参考**："
+                topic_str += "\n\n   > Follow-up reference:"
                 for fu in follow_ups:
                     topic_str += f"\n\n   > - {fu}"
 
             md_output.append(topic_str)
 
-        # 用双换行连接，保持段落间距
+        # Join with double newlines to maintain paragraph spacing
         return "\n\n".join(md_output)
-        # --- 解析逻辑结束 ---
+        # --- Parsing logic ends ---
 
     except requests.exceptions.RequestException as e:
-        print(f"请求发生错误: {e}")
-        return f"⚠️ 网络请求错误: {str(e)}"
+        print(f"Request error: {e}")
+        return f"Network request error: {str(e)}"
     except Exception as e:
-        return f"⚠️ 处理数据时发生错误: {str(e)}"
+        return f"Error processing data: {str(e)}"
     
 async def get_categories(
     locale: str = "en-US"
 ) -> List[str]:
     """
-    获取分类列表 (Get Category List)
-    
+    Get Category List
+
     Args:
-        locale (str): 返回分类名称的语言，可选 'zh-CN' 或 'en-US'。默认 'en-US'。
-        base_url (str): API 基础地址。
+        locale (str): Language for category names, 'zh-CN' or 'en-US'. Default 'en-US'.
+        base_url (str): API base URL.
 
     Returns:
-        List[str]: 分类名称列表。
+        List[str]: List of category names.
     """
     try:
         settings = await load_settings()
@@ -126,7 +126,7 @@ async def get_categories(
         data = response.json()
         return data.get("data", [])
     except requests.exceptions.RequestException as e:
-        print(f"请求发生错误: {e}")
+        print(f"Request error: {e}")
         return []
     
 
@@ -135,38 +135,38 @@ random_topics_tools = [
         "type": "function",
         "function": {
             "name": "get_random_topics",
-            "description": "获取随机的聊天话题、破冰问题或深度对话主题。当用户想要开始一段对话、感到无聊、或者想要深入了解对方时使用。",
+            "description": "Get random chat topics, icebreaker questions, or deep conversation themes. Use when the user wants to start a conversation, feels bored, or wants to get to know someone better.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "locale": {
                         "type": "string",
                         "enum": ["zh-CN", "en-US"],
-                        "description": "话题的语言环境。中文请使用 'zh-CN'，英文使用 'en-US'。默认为 'en-US'。",
+                        "description": "Language locale for topics. Use 'zh-CN' for Chinese, 'en-US' for English. Default is 'en-US'.",
                         "default": "en-US"
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "一次获取的话题数量，默认为 1。",
+                        "description": "Number of topics to fetch at once, default is 1.",
                         "default": 1
                     },
                     "mood": {
                         "type": "string",
                         "enum": ["positive", "neutral", "curious", "flirty"],
-                        "description": "话题的情绪基调。positive: 积极向上; neutral: 中性/一般; curious: 好奇/探索; flirty: 暧昧/调情。"
+                        "description": "Emotional tone of the topic. positive: upbeat; neutral: general; curious: exploratory; flirty: romantic/playful."
                     },
                     "depth": {
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 5,
-                        "description": "话题的深度等级 (1-5)。1 为轻松闲聊，5 为深度灵魂拷问。"
+                        "description": "Depth level of the topic (1-5). 1 for light casual chat, 5 for deep soul-searching questions."
                     },
                     "category": {
                         "type": "string",
-                        "description": "特定的话题分类（例如 'Life', 'Love' 等）。建议先调用 get_categories 获取可用分类。"
+                        "description": "Specific topic category (e.g., 'Life', 'Love', etc.). Recommend calling get_categories first to see available categories."
                     }
                 },
-                "required": [] 
+                "required": []
             }
         }
     },
@@ -174,14 +174,14 @@ random_topics_tools = [
         "type": "function",
         "function": {
             "name": "get_categories",
-            "description": "获取当前可用的话题分类列表。在用户想要选择特定类型的聊天话题时，先调用此函数查看有哪些分类。",
+            "description": "Get the list of currently available topic categories. Call this function first when the user wants to choose a specific type of chat topic to see what categories are available.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "locale": {
                         "type": "string",
                         "enum": ["zh-CN", "en-US"],
-                        "description": "分类名称的语言。中文请使用 'zh-CN'，英文使用 'en-US'。",
+                        "description": "Language for category names. Use 'zh-CN' for Chinese, 'en-US' for English.",
                         "default": "en-US"
                     }
                 },
@@ -189,4 +189,4 @@ random_topics_tools = [
             }
         }
     }
-]    
+]

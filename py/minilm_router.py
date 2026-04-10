@@ -8,13 +8,13 @@ from pydantic import BaseModel
 
 from py.get_setting import DEFAULT_EBD_DIR
 
-# ----------------- 延迟导入占位符 -----------------
+# ----------------- Lazy import placeholders -----------------
 ort = None
 AutoTokenizer = None
 np = None
 
 def _lazy_load_deps():
-    """只有在真正用到模型时，才在子线程/函数内加载重型库"""
+    """Only load heavy libraries when actually used, in a sub-thread/function"""
     global ort, AutoTokenizer, np
     if ort is None:
         import onnxruntime as ort
@@ -29,7 +29,7 @@ MODEL_PATH = os.path.join(DEFAULT_EBD_DIR, MODEL_NAME)
 # ---------- MiniLM ONNX Predictor ----------
 class MiniLMOnnxPredictor:
     def __init__(self, model_dir: str, use_gpu: bool = False):
-        _lazy_load_deps() # 确保库已加载
+        _lazy_load_deps()  # Ensure libraries are loaded
         self.model_dir = model_dir
         self.is_loaded = False
         
@@ -37,19 +37,19 @@ class MiniLMOnnxPredictor:
             return
             
         try:
-            # 自动识别 [UNK] 还是 <unk>
+            # Auto-detect [UNK] vs <unk>
             self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
-            
+
             providers = (["CUDAExecutionProvider", "CPUExecutionProvider"]
                          if use_gpu else ["CPUExecutionProvider"])
-            
-            # 寻找模型文件
+
+            # Locate model files
             model_path_o4 = os.path.join(model_dir, "model_O4.onnx")
             model_path_std = os.path.join(model_dir, "model.onnx")
             target_model = model_path_o4 if os.path.exists(model_path_o4) else model_path_std
-            
+
             if not os.path.exists(target_model):
-                raise FileNotFoundError(f"未找到模型文件: {target_model}")
+                raise FileNotFoundError(f"Model file not found: {target_model}")
                 
             self.session = ort.InferenceSession(target_model, providers=providers)
             self.input_names = [i.name for i in self.session.get_inputs()]
@@ -82,19 +82,19 @@ class MiniLMOnnxPredictor:
         if not self.is_loaded:
             raise RuntimeError("Model not loaded.")
         
-        # 核心逻辑：使用分词器处理
+        # Core logic: process with tokenizer
         inputs = self.tokenizer(sentences, padding=True, truncation=True, max_length=512, return_tensors="np")
-        
-        # 构造输入字典，严格匹配模型要求的端口
+
+        # Build input dict, strictly matching model's required ports
         ort_inputs = {
             "input_ids": inputs["input_ids"].astype(np.int64),
             "attention_mask": inputs["attention_mask"].astype(np.int64)
         }
-        
-        # --- 这里的逻辑就是你原本工作中最重要的部分，现在已完整保留 ---
+
+        # --- This is the most critical part of the original logic, now fully preserved ---
         if "token_type_ids" in self.input_names:
             tti = inputs.get("token_type_ids")
-            # 如果分词器没给 tti，就根据 input_ids 的形状补全一个全 0 的
+            # If tokenizer didn't provide tti, fill a zero tensor matching input_ids shape
             ort_inputs["token_type_ids"] = (tti.astype(np.int64) if tti is not None else
                                             np.zeros_like(inputs["input_ids"], dtype=np.int64))
         
@@ -102,7 +102,7 @@ class MiniLMOnnxPredictor:
         embeddings = self.mean_pooling(outputs[0], inputs["attention_mask"])
         return self.normalize(embeddings).astype(np.float32)
 
-# ---------- 池子管理 ----------
+# ---------- Pool management ----------
 class MiniLMPool:
     def __init__(self, model_dir: str, use_gpu: bool = False):
         self.model_dir = model_dir
@@ -149,7 +149,7 @@ class EmbeddingResponse(BaseModel):
 
 async def get_minilm_predictor():
     try:
-        # 使用 to_thread 避免在第一次加载模型时卡死主循环
+        # Use to_thread to avoid blocking the main loop during first model load
         return await asyncio.to_thread(minilm_pool.get)
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Model unavailable: {e}")
@@ -159,8 +159,8 @@ async def create_embeddings(request: EmbeddingRequest,
                             predictor: MiniLMOnnxPredictor = Depends(get_minilm_predictor)):
     start = time.time()
     texts = [request.input] if isinstance(request.input, str) else request.input
-    
-    # 统计 token 容错
+
+    # Token count with fallback
     try:
         num_tokens = sum(len(predictor.tokenizer.tokenize(t)) for t in texts)
     except Exception:

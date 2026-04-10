@@ -8,7 +8,7 @@
     <img src="https://img.shields.io/badge/English-Readme-0057D2?style=for-the-badge&logo=markdown"/>
   </a>
   <a href="./README_JA.md">
-    <img src="https://img.shields.io/badge/日本語-Readme-FF69B4?style=for-the-badge&logo=markdown"/>
+    <img src="https://img.shields.io/badge/日本語-README-E60012?style=for-the-badge&logo=markdown"/>
   </a>
 </div>
 
@@ -66,30 +66,18 @@
 
 ⭐ 注意！ インストール時に「現在のユーザーのみにインストール」を選択してください。そうしないと、起動時に管理者権限が必要になります。OSは **Windows 10/11、Windows Server 2025** 以降が必要です！
 
-### MacOS 統合パッケージ（現在はMチップのみ対応、インストール不要のソースコード版、ワンクリックでリポジトリ最新版に同期可能、デスクトップ版のパッケージ化待ち不要）
-> **開発者/上級ユーザー向け**：インストール不要のソースコード版、ワンクリックでリポジトリ最新版に同期可能、デスクトップ版のパッケージ化待ち不要。
+### macOSポータブルパッケージ（現在Mチップのみ対応、開発者向け、インストール不要のソースバージョン、最新リポジトリへのワンクリック同期対応）
 
-👉 [国際ユーザーはこちらをクリックしてダウンロード](https://github.com/heshengtao/super-agent-party/releases/download/v0.3.9/super-agent-party-mac-v0.3.9.7z)  
-👉 [中国ユーザーはこちらをクリックしてダウンロード](https://modelscope.cn/models/ailm32442/super-agent-party-portable/resolve/master/v0.3.9/super-agent-party-mac-v0.3.9.7z)
+  👉 [ダウンロードはこちら](https://github.com/heshengtao/super-agent-party/releases/download/v0.3.9/super-agent-party-mac-v0.3.9.7z)
 
-#### 🚀 使用方法
+⭐ 注意！ ターミナルで `one-click update(update).sh` を実行してソフトウェアを更新するか、`one-click start(start).sh` で起動できます。使用前にパーミッションを付与してください！
 
-**1. ネットワークダウンロード隔離を解除（重要）**
-ダウンロードして解凍後、ターミナルを開き、以下のコマンドを入力し（最後のスペースに注意）、**解凍したフォルダ**をターミナルウィンドウにドラッグ＆ドロップしてEnterキーを押します：
-```shell
-sudo xattr -rd com.apple.quarantine 
-```
-*(注：`-rd` パラメータはフォルダ内のすべてのコンポーネントの隔離属性を再帰的に削除します。これを行わないとPython環境が正常に呼び出せない可能性があります)*
-
-**2. スクリプトに実行権限を付与**
-ターミナルで該当フォルダに移動し、以下を実行：
-```shell
-chmod +x 一键更新(update).sh 一键启动(start).sh
-```
-
-**3. ソフトウェアを実行**
-- **初回使用/更新時：** まず `./一键更新(update).sh` を実行し、依存関係が最新版に同期されていることを確認することをお勧めします。
-- **日常的な起動：** 直接 `./一键启动(start).sh` を実行します。
+  ```shell
+  chmod +x 一键更新(update).sh
+  ./一键更新(update).sh
+  chmod +x 一键启动(start).sh
+  ./一键启动(start).sh
+  ```
 
 ### macOSデスクトップインストール（現在Mチップのみ対応）
 
@@ -181,7 +169,6 @@ chmod +x 一键更新(update).sh 一键启动(start).sh
 | AI RSS reader      | heshengtao  | Super Agent Party用のAI RSSリーダー拡張機能      | https://github.com/heshengtao/sap-rss  |
 | Remote      | heshengtao  | Super Agent Partyをワンクリックでインターネットに公開             | https://github.com/heshengtao/sap-remote  |
 | Code Server      | heshengtao  | Super Agent Party用のIDE拡張機能          | https://github.com/heshengtao/sap-code-server  |
-| CLI      | heshengtao  |  Super Agent Party用CLI拡張機能          | https://github.com/heshengtao/sap-cli  |
 
 ## ハードウェア要件
 
@@ -230,6 +217,7 @@ chmod +x 一键更新(update).sh 一键启动(start).sh
 主な機能については以下のドキュメントを参照してください：
   - 👉 [中国語ドキュメント](https://gcnij7egmcww.feishu.cn/wiki/DPRKwdetCiYBhPkPpXWcugujnRc)
   - 👉 [英語ドキュメント](https://temporal-lantern-7e8.notion.site/super-agent-party-211b2b2cb6f180c899d1c27a98c4965d)
+  - 👉 [日本語ドキュメント](https://wiki.agentparty.top)
 
 | 機能 | 詳細 |
 | --- | --- |
@@ -293,10 +281,10 @@ chmod +x 一键更新(update).sh 一键启动(start).sh
 ### フォローしてください
 <div align="center">
   <a href="https://space.bilibili.com/26978344">
-    <img src="doc/image/B.png" width="100" height="100" style="border-radius: 80%; overflow: hidden;" alt="octocat"/>
+    <img src="doc/image/B.png" width="100" height="100" style="border-radius: 80%; overflow: hidden;" alt="bilibili"/>
   </a>
   <a href="https://www.youtube.com/@agentParty">
-    <img src="doc/image/YT.png" width="100" height="100" style="border-radius: 80%; overflow: hidden;" alt="octocat"/>
+    <img src="doc/image/YT.png" width="100" height="100" style="border-radius: 80%; overflow: hidden;" alt="youtube"/>
   </a>
 </div>
 

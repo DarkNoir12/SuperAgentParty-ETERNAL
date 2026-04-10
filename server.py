@@ -2966,7 +2966,21 @@ async def generate_stream_response(client, reasoner_client, request: ChatRequest
                     extra['max_tokens'] = request.max_tokens or settings['max_tokens']
                 if settings.get('enableOmniTTS',False) and not request.is_sub_agent:
                     extra['modalities'] = ["text", "audio"]
-                    extra['audio'] ={"voice": settings.get('omniVoice',"Cherry"), "format": "wav"}
+                    voice_cloning = settings.get('omniVoiceCloning', {})
+                    if voice_cloning.get('enabled') and voice_cloning.get('referenceAudioBase64'):
+                        # Voice cloning mode with reference audio
+                        extra['audio'] = {
+                            "voice": settings.get('omniVoice', "Cherry"),
+                            "format": "wav",
+                            "voice_reference": {
+                                "audio": voice_cloning['referenceAudioBase64'],
+                                "format": voice_cloning.get('referenceAudioFormat', 'wav'),
+                                "name": voice_cloning.get('voiceName', 'Custom Voice')
+                            }
+                        }
+                    else:
+                        # Standard mode
+                        extra['audio'] ={"voice": settings.get('omniVoice',"Cherry"), "format": "wav"}
                 if reasoner_vendor == 'OpenAI':
                     reasoner_extra['max_completion_tokens'] = settings['reasoner']['max_tokens']
                 else:
@@ -7261,6 +7275,71 @@ async def get_tts_status():
         "total_connections": len(tts_manager.main_connections) + len(tts_manager.vrm_connections)
     }
 
+@app.post("/tts/omni/upload-reference")
+async def upload_omni_reference(request: Request):
+    """Upload reference audio for OmniVoice voice cloning"""
+    try:
+        data = await request.json()
+        audio_base64 = data.get('audio', '')
+        audio_format = data.get('format', 'wav')
+        voice_name = data.get('voiceName', 'Custom Voice')
+
+        if not audio_base64:
+            return JSONResponse(status_code=400, content={"error": "No audio data provided"})
+
+        # Save to settings
+        from py.get_setting import load_settings, save_settings
+        settings = await load_settings()
+        if 'omniVoiceCloning' not in settings:
+            settings['omniVoiceCloning'] = {}
+
+        settings['omniVoiceCloning'].update({
+            'enabled': True,
+            'referenceAudioBase64': audio_base64,
+            'referenceAudioFormat': audio_format,
+            'voiceName': voice_name
+        })
+
+        await save_settings(settings)
+        return {"status": "success", "voiceName": voice_name, "format": audio_format}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.delete("/tts/omni/clear-reference")
+async def clear_omni_reference():
+    """Clear OmniVoice reference audio"""
+    try:
+        from py.get_setting import load_settings, save_settings
+        settings = await load_settings()
+        if 'omniVoiceCloning' in settings:
+            settings['omniVoiceCloning'] = {
+                'enabled': False,
+                'referenceAudioBase64': None,
+                'referenceAudioFormat': 'wav',
+                'voiceName': 'Custom Voice'
+            }
+            await save_settings(settings)
+        return {"status": "success"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/tts/omni/toggle")
+async def toggle_omni_voice_cloning(request: Request):
+    """Toggle OmniVoice voice cloning on/off"""
+    try:
+        data = await request.json()
+        enabled = data.get('enabled', False)
+        from py.get_setting import load_settings, save_settings
+        settings = await load_settings()
+        if 'omniVoiceCloning' not in settings:
+            settings['omniVoiceCloning'] = {'enabled': enabled, 'referenceAudioBase64': None, 'referenceAudioFormat': 'wav', 'voiceName': 'Custom Voice'}
+        else:
+            settings['omniVoiceCloning']['enabled'] = enabled
+        await save_settings(settings)
+        return {"status": "success", "enabled": enabled}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
 
 @app.post("/tts")
 async def text_to_speech(request: Request):
@@ -7337,18 +7416,21 @@ async def text_to_speech(request: Request):
                     async for chunk in communicate.stream():
                         if chunk["type"] == "audio":
                             audio_chunks.append(chunk["data"])
-                    
+
                     full_audio = b''.join(audio_chunks)
                     convert_result = await asyncio.to_thread(convert_to_opus_simple, full_audio)
                     opus_audio = convert_result[0] if isinstance(convert_result, tuple) else convert_result
-                    
+
                     chunk_size = 4096
                     for i in range(0, len(opus_audio), chunk_size):
                         yield opus_audio[i:i + chunk_size]
                 else:
+                    # Collect all MP3 chunks and return as complete file
+                    audio_chunks = []
                     async for chunk in communicate.stream():
                         if chunk["type"] == "audio":
-                            yield chunk["data"]
+                            audio_chunks.append(chunk["data"])
+                    yield b''.join(audio_chunks)
 
             media_type = "audio/ogg" if target_format == "opus" else "audio/mpeg"
             filename = f"tts_{index}.opus" if target_format == "opus" else f"tts_{index}.mp3"
@@ -7401,6 +7483,69 @@ async def text_to_speech(request: Request):
             media_type = "audio/ogg" if target_format == "opus" else "audio/wav"
             filename = f"tts_{index}.opus" if target_format == "opus" else f"tts_{index}.wav"
             return StreamingResponse(generate_audio(), media_type=media_type, headers={"Content-Disposition": f"inline; filename={filename}", "X-Audio-Index": str(index)})
+
+        # ==========================================
+        # 2.5. OmniVoice 引擎 (使用全局连接池)
+        # ==========================================
+        elif tts_engine == 'omnivoice':
+            import re
+            speakable_text = re.sub(r'<[^>]+>', '', text).strip()
+            
+            # 过滤掉完全没有字母/汉字/数字的文本（如纯标点符号、仅含动作标签的文本）
+            if not speakable_text or not any(c.isalnum() or '\u4e00' <= c <= '\u9fff' for c in speakable_text):
+                # 返回一个极短的空音频（防止由于返回400而导致前端抛出 NotSupportedError）
+                media_type = "audio/mpeg"
+                return StreamingResponse(iter([b'']), media_type=media_type)
+                
+            omni_server = tts_settings.get('omniVoiceServer', 'http://127.0.0.1:8082')
+            enable_switch = tts_settings.get('enableAutoVoiceSwitch', False)
+            default_voice = tts_settings.get('omniVoicename', 'eternal_ai')
+            alt_voice = tts_settings.get('omniVoiceNameAlt', default_voice)
+
+            # 解析语言标签 [en>]...[<en] 或 [pt>]...[<pt]
+            fragments = []
+            if enable_switch:
+                import re
+                # 匹配标记块
+                matches = list(re.finditer(r'\[(en|pt)>\](.*?)(?:\[<\1\]|$)', speakable_text, re.DOTALL))
+                if matches:
+                    for match in matches:
+                        lang = match.group(1)
+                        content = match.group(2).strip()
+                        if content:
+                            fragments.append({
+                                "text": content,
+                                "voice": default_voice if lang == 'en' else alt_voice
+                            })
+                else:
+                    # fallback to default
+                    fragments.append({"text": speakable_text, "voice": default_voice})
+            else:
+                fragments.append({"text": speakable_text, "voice": default_voice})
+
+            async def generate_audio():
+                safe_url = sanitize_url(input_url=omni_server, default_base="http://127.0.0.1:8082", endpoint="/v1/tts")
+                for frag in fragments:
+                    payload = {"text": frag["text"], "voice": frag["voice"], "format": target_format}
+                    try:
+                        async with global_http_client.stream("POST", safe_url, json=payload, timeout=60.0) as response:
+                            response.raise_for_status()
+                            async for chunk in response.aiter_bytes():
+                                yield chunk
+                    except Exception as e:
+                        print(f"OmniVoice fragment synthesis failure: {str(e)}")
+                        continue
+
+            if target_format == "opus":
+                media_type = "audio/ogg"
+            elif target_format == "mp3":
+                media_type = "audio/mpeg"
+            else:
+                media_type = "audio/wav"
+                
+            filename = f"tts_{index}.{target_format}"
+            return StreamingResponse(generate_audio(), media_type=media_type, headers={"Content-Disposition": f"inline; filename={filename}", "X-Audio-Index": str(index), "X-Audio-Format": target_format})
+
 
         # ==========================================
         # 3. GSV 引擎 (使用全局连接池)

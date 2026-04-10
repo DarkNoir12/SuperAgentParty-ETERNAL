@@ -577,7 +577,7 @@ function updateElement(el, rawMarkdown, formatFn) {
               {{ t('firstTimeUse') }}
               <el-link
                 type="primary"
-                :underline="false"
+                underline="never"
                 class="font-medium"
                 @click="switchToApiBox"
               >
@@ -633,7 +633,7 @@ function updateElement(el, rawMarkdown, formatFn) {
               {{ t('availableExtensions') }}
               <el-link
                 type="primary"
-                :underline="false"
+                underline="never"
                 href="#" 
                 @click.stop.prevent="switchToExtensionPage();showExtensionsDialog = false" 
               >
@@ -654,8 +654,9 @@ function updateElement(el, rawMarkdown, formatFn) {
               
               <!-- 右上角按钮组 -->
               <div class="btn-top-right">
-                <el-tooltip :content="t('openExtensionInBrowser')" placement="top">
-                  <!-- 浏览器打开按钮 -->
+                <!-- 浏览器打开按钮 -->
+<el-tooltip :content="t('openExtensionInBrowser')" placement="top">
+  
                   <el-button
                     type="default"
                     circle
@@ -664,10 +665,11 @@ function updateElement(el, rawMarkdown, formatFn) {
                     <i class="fa-solid fa-external-link"></i>
                   </el-button>
                 </el-tooltip>
-                <el-tooltip :content="t('openExtensionInWindow')" placement="top">
-                  <!-- 独立窗口打开按钮（仅在Electron环境下显示） -->
+                <!-- 独立窗口打开按钮（仅在Electron环境下显示） -->
+<el-tooltip v-if="isElectron" :content="t('openExtensionInWindow')" placement="top">
+  
                   <el-button
-                    v-if="isElectron"
+                   
                     type="primary"
                     circle
                     size="small"
@@ -871,9 +873,9 @@ function updateElement(el, rawMarkdown, formatFn) {
               </div>
                   <div class="button-group" v-if="isCapsuleMode">
 
-                    <el-tooltip :content="ASRrunning?t('listening'):isTyping?t('typing'):TTSrunning?t('speaking'):t('idle')" placement="top">
+                    <el-tooltip v-if="isCapsuleMode" :content="ASRrunning?t('listening'):isTyping?t('typing'):TTSrunning?t('speaking'):t('idle')" placement="top">
                       <el-button
-                        v-if="isCapsuleMode"
+                       
                         class="icon-btn status-btn"
                         :type="ASRrunning||TTSrunning||isTyping ?  'primary':'default' "
                         circle>
@@ -884,13 +886,13 @@ function updateElement(el, rawMarkdown, formatFn) {
                       </el-button>
                     </el-tooltip>
 
-                    <el-tooltip :content="t('visionControl')" placement="top">
+                    <el-tooltip v-if="isCapsuleMode" :content="t('visionControl')" placement="top">
                       <el-button
                         :disabled="!isElectron"
                         @click="visionControlSettings.enabled = !visionControlSettings.enabled; handleVisionControlEnableToggle(visionControlSettings.enabled)"
                         class="icon-btn web-search-btn"
                         :type="visionControlSettings.enabled ? 'primary' : 'default'"
-                        v-if="isCapsuleMode"
+                       
                         circle>
                         <i class="fa-solid fa-arrow-pointer"></i>
                       </el-button>
@@ -939,9 +941,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                   
                   <div class="button-group">
 
-                    <el-tooltip :content="ASRrunning?t('listening'):isTyping?t('typing'):TTSrunning?t('speaking'):t('idle')" placement="top">
+                    <el-tooltip v-if="isCapsuleMode" :content="ASRrunning?t('listening'):isTyping?t('typing'):TTSrunning?t('speaking'):t('idle')" placement="top">
                       <el-button
-                        v-if="isCapsuleMode"
+                       
                         class="icon-btn status-btn"
                         :type="ASRrunning||TTSrunning||isTyping ?  'primary':'default' "
                         circle>
@@ -952,9 +954,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                       </el-button>
                     </el-tooltip>
 
-                    <el-tooltip :content="t('newChat')" placement="top">
+                    <el-tooltip v-if="!isCapsuleMode" :content="t('newChat')" placement="top">
                       <el-button
-                        v-if="!isCapsuleMode"
+                       
                         @click="clearMessages"
                         class="icon-btn clear-btn"
                         type="primary"
@@ -963,9 +965,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                       </el-button>
                     </el-tooltip>
 
-                    <el-tooltip :content="t('chatHistory')" placement="top">
+                    <el-tooltip v-if="!isCapsuleMode" :content="t('chatHistory')" placement="top">
                       <el-button
-                        v-if="!isCapsuleMode"
+                       
                         @click="showHistoryDialog = true"
                         class="icon-btn history-btn"
                         :type="conversations.length === 0 ? 'default' : 'primary'"
@@ -1341,16 +1343,16 @@ function updateElement(el, rawMarkdown, formatFn) {
                       </el-button>
                     </el-tooltip>
                     <!--展开收起按钮-->
-                    <el-tooltip :content="t('moreButton')" placement="top">
-                      <el-button v-if="!isCapsuleMode" @click="showMoreButtonDialog = true" class="icon-btn collapse-btn" type="default" circle>
+                    <el-tooltip v-if="!isCapsuleMode" :content="t('moreButton')" placement="top">
+                      <el-button @click="showMoreButtonDialog = true" class="icon-btn collapse-btn" type="default" circle>
                         <i class="fa-solid fa-ellipsis"></i>
                       </el-button>
                     </el-tooltip>
 
 
-                    <el-tooltip :content="isSending ? t('stopGenerating') : t('sendMessage')" placement="top" class="send-btn-container">
+                    <el-tooltip v-if="!isCapsuleMode" :content="isSending ? t('stopGenerating') : t('sendMessage')" placement="top" class="send-btn-container">
                       <el-button
-                        v-if="!isCapsuleMode"
+                       
                         @click="isSending ? stopGenerate() : sendMessage()"
                         :type="isSending ? 'danger' : 'primary'"
                         class="icon-btn send-btn"
@@ -1486,16 +1488,16 @@ function updateElement(el, rawMarkdown, formatFn) {
                       <template  v-if="!isAssistantMode && !isMobile">
                           
                           <!-- 扩展指示器 -->
-                          <el-tooltip :content="t('clickToSwitchExtensions')" placement="top" :show-after="500">
-                            <div class="status-pill" v-if="currentViewName" @click="openExtensionsDialog">
+                          <el-tooltip v-if="currentViewName" :content="t('clickToSwitchExtensions')" placement="top" :show-after="500">
+                            <div class="status-pill" @click="openExtensionsDialog">
                               <i class="fa-solid fa-puzzle-piece"></i>
                               <span class="pill-text">{{ currentViewName }}</span>
                             </div>
                           </el-tooltip>
 
                           <!-- 3. 工作区目录指示器 (仅 CLI 启用时显示) -->
-                          <el-tooltip :content="t('workspace')" placement="top" :show-after="500">
-                            <div class="status-pill" v-if="CLISettings.enabled" @click="browseDirectory">
+                          <el-tooltip v-if="CLISettings.enabled" :content="t('workspace')" placement="top" :show-after="500">
+                            <div class="status-pill" @click="browseDirectory">
                               <i class="fa-solid fa-folder-open"></i>
                               <span class="pill-text">{{ CLISettings.cc_path ? CLISettings.cc_path.split(/[/\\]/).filter(Boolean).pop() : t('pleaseSelectWorkspaceFirst') }}</span>
                             </div>
@@ -1510,8 +1512,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                           >
                             <!-- ⚠️ 关键修复：让 status-pill 直接作为下拉组件的触发器 -->
                             <div class="status-pill">
-                              <el-tooltip :content="t('permissionMode')" placement="top" :show-after="500">
-                                <!-- 将内容包裹在一个 span 中，使得 tooltip 正常工作 -->
+                              <!-- 将内容包裹在一个 span 中，使得 tooltip 正常工作 -->
+<el-tooltip :content="t('permissionMode')" placement="top" :show-after="500">
+  
                                 <span style="display: inline-flex; align-items: center; gap: 6px;">
                                   <i class="fa-solid fa-shield-halved"></i>
                                   <span class="pill-text">
@@ -1907,7 +1910,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                   <div class="extensions-divider" v-if="extensions.length > 0">
                     <span>
                       {{ t('availableExtensions') }}
-                      <el-link type="primary" :underline="false" href="#" @click.stop.prevent="switchToExtensionPage">
+                      <el-link type="primary" underline="never" href="#" @click.stop.prevent="switchToExtensionPage">
                         <el-icon class="mr-1"><i class="fa-solid fa-puzzle-piece"></i></el-icon>{{ t('goToExtensionPage') }}
                       </el-link>
                     </span>
@@ -1927,8 +1930,8 @@ function updateElement(el, rawMarkdown, formatFn) {
                             <i class="fa-solid fa-external-link"></i>
                           </el-button>
                         </el-tooltip>
-                        <el-tooltip :content="t('openExtensionInWindow')" placement="top">
-                          <el-button v-if="isElectron" type="primary" circle size="small" @click.stop="openExtensionInWindow(ext)" style="margin-left: 8px;">
+                        <el-tooltip v-if="isElectron" :content="t('openExtensionInWindow')" placement="top">
+                          <el-button type="primary" circle size="small" @click.stop="openExtensionInWindow(ext)" style="margin-left: 8px;">
                             <i class="fa-solid fa-window-restore"></i>
                           </el-button>
                         </el-tooltip>
@@ -2442,7 +2445,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                               {{ t('memory') }}
                               <el-link
                                 type="primary"
-                                :underline="false"
+                                underline="never"
                                 href="https://github.com/SillyTavern/SillyTavern" 
                                 target="_blank"
                               >
@@ -2658,8 +2661,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                           <i v-else class="fa-solid fa-spinner fa-spin"></i>
                         </el-button>
                       </el-tooltip>
-                      <el-tooltip :content="t('stopGenCard')" placement="top">
-                        <!-- 停止生成按钮 -->
+                      <!-- 停止生成按钮 -->
+<el-tooltip :content="t('stopGenCard')" placement="top">
+  
                         <el-button
                           type="danger"
                           size="large"
@@ -2681,13 +2685,13 @@ function updateElement(el, rawMarkdown, formatFn) {
                             class="mini-vendor-logo"
                           />
                           <div class="card-actions">
-                            <el-tooltip :content="t('vectorInteract')" placement="top">
+                            <el-tooltip v-if="memory.providerId" :content="t('vectorInteract')" placement="top">
                               <el-button
                                 type="warning"
                                 circle
                                 size="small"
                                 @click="openVectorDialog(memory.id)"
-                                v-if="memory.providerId"
+                               
                               >
                                 <i class="fa-solid fa-brain"></i>
                               </el-button>
@@ -2885,7 +2889,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                   {{ t('minilmNotice4') }}
                                   <el-link
                                     type="primary"
-                                    :underline="false"
+                                    underline="never"
                                     class="font-medium"
                                     @click="switchToMemoryConfig"
                                   >
@@ -2896,7 +2900,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                   {{ t('firstTimeUse') }}
                                   <el-link
                                     type="primary"
-                                    :underline="false"
+                                    underline="never"
                                     class="font-medium"
                                     @click="switchToApiBox"
                                   >
@@ -3119,8 +3123,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                           <i v-else class="fa-solid fa-spinner fa-spin"></i>
                         </el-button>
                       </el-tooltip>
-                      <el-tooltip :content="t('stopGenCard')" placement="top">
-                        <!-- 停止生成按钮 -->
+                      <!-- 停止生成按钮 -->
+<el-tooltip :content="t('stopGenCard')" placement="top">
+  
                         <el-button
                           type="danger"
                           size="large"
@@ -3318,7 +3323,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             Azure TTS
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices" 
                               target="_blank"
                             >
@@ -3365,7 +3370,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('volcengineTTS') || 'Volcengine TTS' }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://console.volcengine.com/speech/service/10035" 
                             target="_blank"
                           >
@@ -3433,7 +3438,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             Google TTS
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://console.cloud.google.com/apis/library/texttospeech.googleapis.com" 
                               target="_blank"
                             >
@@ -3477,7 +3482,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             Baidu TTS
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://console.bce.baidu.com/ai/#/ai/speech/app/list" 
                               target="_blank"
                             >
@@ -3519,7 +3524,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           <span>Minimax
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://platform.minimaxi.com/user-center/basic-information" 
                               target="_blank"
                             >
@@ -3561,7 +3566,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           <span>Xunfei
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://console.xfyun.cn/services/tts" 
                               target="_blank"
                             >
@@ -3605,7 +3610,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             Fish Audio
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://fish.audio/go-api" 
                               target="_blank"
                             >
@@ -3814,7 +3819,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             {{ t('firstTimeUse') }}
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               class="font-medium"
                               @click="switchToApiBox"
                             >
@@ -3992,7 +3997,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             GPT Sovits
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://github.com/RVC-Boss/GPT-SoVITS" 
                               target="_blank"
                             >
@@ -5218,7 +5223,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                         1. {{ t('autoFilledDefaultAPI') }} {{ newProviderTemp.vendor }} URL<br>2. 
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             :href="vendorAPIpage[newProviderTemp.vendor]" 
                             target="_blank"
                           >
@@ -5266,7 +5271,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('firstTimeUse') }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             class="font-medium"
                             @click="switchToApiBox"
                           >
@@ -5333,7 +5338,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           @change="autoSaveSettings"
                         ></el-switch>
                       </el-form-item>
-                      <el-form-item v-if="settings.enableOmniTTS" :label="t('omniVoice')" class="form-item-align" label-position="left">
+                      <el-form-item v-if="settings.enableOmniTTS" label="OmniVoice TTS" class="form-item-align" label-position="left">
                         <el-input
                           v-model="settings.omniVoice"
                           :placeholder="t('omniVoicePlaceholder')"
@@ -5527,7 +5532,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('firstTimeUse') }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             class="font-medium"
                             @click="switchToApiBox"
                           >
@@ -5635,7 +5640,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           @change="autoSaveSettings"
                         ></el-switch>
                       </el-form-item>
-                      <el-form-item v-if="fastSettings.enableOmniTTS" :label="t('omniVoice')" class="form-item-align" label-position="left">
+                      <el-form-item v-if="fastSettings.enableOmniTTS" label="OmniVoice TTS" class="form-item-align" label-position="left">
                         <el-input
                           v-model="fastSettings.omniVoice"
                           :placeholder="t('omniVoicePlaceholder')"
@@ -5829,7 +5834,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('firstTimeUse') }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             class="font-medium"
                             @click="switchToApiBox"
                           >
@@ -5969,7 +5974,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('firstTimeUse') }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             class="font-medium"
                             @click="switchToApiBox"
                           >
@@ -6070,7 +6075,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('firstTimeUse') }}
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               class="font-medium"
                               @click="switchToApiBox"
                             >
@@ -6121,7 +6126,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             2. {{ t('gotoComfyui') }}
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               class="font-medium"
                               @click="switchToComfyui"
                             >
@@ -6543,7 +6548,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('firstTimeUse') }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             class="font-medium"
                             @click="switchToApiBox"
                           >
@@ -6567,7 +6572,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           FunASR
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://github.com/modelscope/FunASR" 
                             target="_blank"
                           >
@@ -6680,6 +6685,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           <el-option label="Xunfei (讯飞)" value="xunfei"></el-option>
                           <el-option label="Fish Audio" value="fish"></el-option>
                           <el-option label="Elevenlabs" value="elevenlabs"></el-option>
+                          <el-option label="OmniVoice TTS" value="omnivoice"></el-option>
                         </el-select>
                       </el-form-item>
                       <el-form-item :label="t('separators')">
@@ -6924,7 +6930,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('firstTimeUse') }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             class="font-medium"
                             @click="switchToApiBox"
                           >
@@ -6939,6 +6945,36 @@ function updateElement(el, rawMarkdown, formatFn) {
                     </el-alert>
                   </div>
 
+                  <!-- ================= OmniVoice TTS ================= -->
+                  <div class="tool-item" v-show="ttsSettings.engine === 'omnivoice'">
+                    <div class="tool-header">
+                      <div class="header-left">
+                        <span>
+                          <el-icon><i class="fa-solid fa-microphone-lines"></i></el-icon> 
+                          OmniVoice TTS
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div class="tool-content">
+                      <el-form-item label="Server URL" class="form-item-align">
+                        <el-input 
+                          v-model="ttsSettings.omniVoiceServer" 
+                          placeholder="http://127.0.0.1:8082" 
+                          @change="autoSaveSettings"
+                        />
+                      </el-form-item>
+                      
+                      <el-form-item label="Voice Name (Instruct/Preset)" class="form-item-align">
+                        <el-input 
+                          v-model="ttsSettings.omniVoicename" 
+                          placeholder="e.g. eternal_ai or 'female, young adult, warm'" 
+                          @change="autoSaveSettings"
+                        />
+                      </el-form-item>
+                    </div>
+                  </div>
+
                   <!-- ================= ElevenLabs TTS ================= -->
                   <div class="tool-item" v-show="ttsSettings.engine === 'elevenlabs'">
                     <div class="tool-header">
@@ -6948,7 +6984,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           ElevenLabs
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://elevenlabs.io/app/settings/api-keys" 
                             target="_blank"
                           >
@@ -7023,7 +7059,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Azure TTS
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices" 
                             target="_blank"
                           >
@@ -7071,7 +7107,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('volcengineTTS') || 'Volcengine TTS' }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://console.volcengine.com/speech/service/10035" 
                             target="_blank"
                           >
@@ -7140,7 +7176,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Google TTS
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://console.cloud.google.com/apis/library/texttospeech.googleapis.com" 
                             target="_blank"
                           >
@@ -7184,7 +7220,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Baidu TTS
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://console.bce.baidu.com/ai/#/ai/speech/app/list" 
                             target="_blank"
                           >
@@ -7226,7 +7262,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                         <span>Minimax
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://platform.minimaxi.com/user-center/basic-information" 
                             target="_blank"
                           >
@@ -7268,7 +7304,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                         <span>Xunfei
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://console.xfyun.cn/services/tts" 
                             target="_blank"
                           >
@@ -7312,7 +7348,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Fish Audio
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://fish.audio/go-api" 
                             target="_blank"
                           >
@@ -7332,6 +7368,59 @@ function updateElement(el, rawMarkdown, formatFn) {
                       <el-form-item label="API Key" class="form-item-align"><el-input v-model="ttsSettings.fishApiKey" type="password" show-password @change="autoSaveSettings"/></el-form-item>
                       <el-form-item :label="t('fishVoice')" class="form-item-align">
                         <el-select v-model="ttsSettings.fishVoice" filterable allow-create class="full-width-input" @change="autoSaveSettings">
+                          <el-option 
+                            v-for="(v, index) in ttsSettings.tetosVoices" 
+                            :key="index" 
+                            :label="getVoiceLabel(v)" 
+                            :value="getVoiceValue(v)"
+                          >
+                            <span style="float: left">{{ getVoiceLabel(v) }}</span>
+                            <span style="float: right; color: #8492a6; font-size: 13px">{{ getVoiceDesc(v) }}</span>
+                          </el-option>
+                        </el-select>
+                      </el-form-item>
+                    </div>
+                  </div>
+                  
+                  <!-- ================= OmniVoice ================= -->
+                  <div class="tool-item" v-show="ttsSettings.engine === 'omnivoice'">
+                    <div class="tool-header">
+                      <div class="header-left">
+                        <span>
+                          <el-icon>
+                            <i class="fa-solid fa-microphone-lines"></i>
+                          </el-icon>
+                          OmniVoice TTS
+                        </span>
+                      </div>
+                      <div class="header-right">
+                        <el-button circle type="primary" @click="fetchTetosVoices('omnivoice')">
+                          <i class="fa-solid fa-rotate-right" :class="{ 'fa-spin': ttsSettings.isFetchingVoices }"></i>
+                        </el-button>
+                      </div>
+                    </div>
+                    <div class="tool-content">
+                      <el-form-item label="Server URL" class="form-item-align">
+                        <el-input v-model="ttsSettings.omniVoiceServer" placeholder="http://127.0.0.1:8082" @change="autoSaveSettings"/>
+                      </el-form-item>
+                      <el-form-item :label="t('fishVoice')" class="form-item-align">
+                        <el-select v-model="ttsSettings.omniVoicename" filterable class="full-width-input" @change="autoSaveSettings">
+                          <el-option 
+                            v-for="(v, index) in ttsSettings.tetosVoices" 
+                            :key="index" 
+                            :label="getVoiceLabel(v)" 
+                            :value="getVoiceValue(v)"
+                          >
+                            <span style="float: left">{{ getVoiceLabel(v) }}</span>
+                            <span style="float: right; color: #8492a6; font-size: 13px">{{ getVoiceDesc(v) }}</span>
+                          </el-option>
+                        </el-select>
+                      </el-form-item>
+                      <el-form-item label="Language Auto-Switch ([en>]/[pt>])" class="form-item-align">
+                        <el-switch v-model="ttsSettings.enableAutoVoiceSwitch" @change="autoSaveSettings"/>
+                      </el-form-item>
+                      <el-form-item v-show="ttsSettings.enableAutoVoiceSwitch" label="Portuguese / Alt Voice" class="form-item-align">
+                        <el-select v-model="ttsSettings.omniVoiceNameAlt" filterable class="full-width-input" @change="autoSaveSettings">
                           <el-option 
                             v-for="(v, index) in ttsSettings.tetosVoices" 
                             :key="index" 
@@ -7510,7 +7599,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           GPT Sovits
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://github.com/RVC-Boss/GPT-SoVITS" 
                             target="_blank"
                           >
@@ -7952,7 +8041,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                       <h3 class="kb-title">{{ t('randomTopicTool') }}</h3>
                       <el-link
                         type="primary"
-                        :underline="false"
+                        underline="never"
                         href="https://github.com/heshengtao/topics-after-party" 
                         target="_blank"
                       >
@@ -7993,7 +8082,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('homeAssistant') }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://www.home-assistant.io/" 
                             target="_blank"
                           >
@@ -8062,7 +8151,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('browserControl') }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://browsermcp.io/install" 
                             target="_blank"
                             v-if="chromeMCPSettings.type=='external' && chromeMCPSettings.mcpName=='browser-mcp'"
@@ -8073,7 +8162,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           </el-link>
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://nodejs.org/en/download" 
                             target="_blank"
                             v-if="chromeMCPSettings.type=='external'"
@@ -8084,7 +8173,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           </el-link>
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://github.com/heshengtao/browser-for-sap/releases" 
                             target="_blank"
                             v-if="chromeMCPSettings.type=='external'"
@@ -8187,7 +8276,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           {{ t('sqlControl') }}
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://docs.astral.sh/uv/getting-started/installation/" 
                             target="_blank"
                           >
@@ -8332,7 +8421,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           E2B
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://e2b.dev/" 
                             target="_blank"
                           >
@@ -8365,7 +8454,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Sandbox Fusion
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://github.com/bytedance/SandboxFusion" 
                             target="_blank"
                           >
@@ -8533,7 +8622,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           </span>
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://www.docker.com/get-started" 
                             target="_blank"
                           >
@@ -8579,7 +8668,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             Claude Code
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://github.com/anthropics/claude-code" 
                               target="_blank"
                             >
@@ -8659,7 +8748,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             Qwen Code
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://github.com/QwenLM/qwen-code" 
                               target="_blank"
                             >
@@ -9082,7 +9171,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           SearXNG
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://github.com/searxng/searxng" 
                             target="_blank"
                           >
@@ -9143,7 +9232,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Tavily
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://app.tavily.com/home" 
                             target="_blank"
                           >
@@ -9187,7 +9276,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Bing
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://learn.microsoft.com/en-us/bing/search-apis/bing-web-search/create-bing-search-service-resource"
                             target="_blank"
                           >
@@ -9240,7 +9329,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Google
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://console.cloud.google.com/apis/credentials"
                             target="_blank"
                           >
@@ -9293,7 +9382,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Brave
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://brave.com/search/api/"
                             target="_blank"
                           >
@@ -9338,7 +9427,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Exa
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://docs.exa.ai/reference/welcome"
                             target="_blank"
                           >
@@ -9383,7 +9472,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Serper
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://serper.dev/dashboard"
                             target="_blank"
                           >
@@ -9427,7 +9516,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Bochaai
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://open.bochaai.com/overview"
                             target="_blank"
                           >
@@ -9470,7 +9559,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           jina
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://jina.ai/api-dashboard" 
                             target="_blank"
                           >
@@ -9503,7 +9592,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Crawl4Ai
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://github.com/unclecode/crawl4ai" 
                             target="_blank"
                           >
@@ -9546,7 +9635,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           Firecrawl
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://www.firecrawl.dev/"
                             target="_blank"
                           >
@@ -9556,7 +9645,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           </el-link>
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://docs.firecrawl.dev/api-reference/introduction"
                             target="_blank"
                             class="ml-2"
@@ -9651,7 +9740,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                           markdown.new
                           <el-link
                             type="primary"
-                            :underline="false"
+                            underline="never"
                             href="https://markdown.new/"
                             target="_blank"
                           >
@@ -9748,7 +9837,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                 {{ t('firstTimeUse') }}
                                 <el-link
                                   type="primary"
-                                  :underline="false"
+                                  underline="never"
                                   class="font-medium"
                                   @click="switchToApiBox"
                                 >
@@ -9980,7 +10069,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                               {{ t('minilmNotice2') }}
                               <el-link
                                 type="primary"
-                                :underline="false"
+                                underline="never"
                                 class="font-medium"
                                 @click="switchToKnowledgeConfig"
                               >
@@ -9991,7 +10080,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                               {{ t('firstTimeUse') }}
                               <el-link
                                 type="primary"
-                                :underline="false"
+                                underline="never"
                                 class="font-medium"
                                 @click="switchToApiBox"
                               >
@@ -10212,7 +10301,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             {{ t('comfyuiServers') }}
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://platform.comfy.org/profile/api-keys" 
                               target="_blank"
                             >
@@ -10258,9 +10347,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                                 </template>
                               </el-button>
                             </el-tooltip>
-                            <el-tooltip :content="t('removeComfyUIServer')" placement="top">
+                            <el-tooltip v-if="index !== 0" :content="t('removeComfyUIServer')" placement="top">
                               <el-button 
-                                v-if="index !== 0"
+                               
                                 @click="removeComfyUIServer(index)"
                                 type="danger" 
                                 circle>
@@ -11496,7 +11585,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                     <el-link
                                       v-if="BotConfig.imgHost === 'easyImage2'"
                                       type="primary"
-                                      :underline="false"
+                                      underline="never"
                                       href="https://github.com/icret/EasyImages2.0" 
                                       target="_blank"
                                     >
@@ -11557,7 +11646,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                 {{ t('qq_bot_config') }}
                                 <el-link
                                   type="primary"
-                                  :underline="false"
+                                  underline="never"
                                   href="https://q.qq.com/" 
                                   target="_blank"
                                 >
@@ -11567,7 +11656,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                 </el-link>
                                 <el-link
                                   type="primary"
-                                  :underline="false"
+                                  underline="never"
                                   href="https://q.qq.com/#/news/detail?id=1376238e8e2fbbc036676bb09d2f37da" 
                                   target="_blank"
                                 >
@@ -11658,7 +11747,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                       {{ t('goToMainAgentNotice1') }}
                                       <el-link
                                         type="primary"
-                                        :underline="false"
+                                        underline="never"
                                         class="font-medium"
                                         @click="switchToMainAgent"
                                       >
@@ -11701,7 +11790,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                       {{ t('goToMemoryNotice1') }}
                                       <el-link
                                         type="primary"
-                                        :underline="false"
+                                        underline="never"
                                         class="font-medium"
                                         @click="switchToMemory"
                                       >
@@ -11792,7 +11881,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                     <p class="step-desc">{{ t('wechatStep1Desc') }}</p>
                                     <el-link
                                       type="primary"
-                                      :underline="false"
+                                      underline="never"
                                       href="https://nodejs.org/en/download" 
                                       target="_blank"
                                       v-if="chromeMCPSettings.type=='external'"
@@ -11811,7 +11900,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                     <p class="step-desc">{{ t('wechatStep2Desc') }}</p>
                                     <el-link
                                       type="primary"
-                                      :underline="false"
+                                      underline="never"
                                       href="#" 
                                       @click.stop.prevent="switchToExtensionPage();showExtensionsDialog = false" 
                                     >
@@ -11861,7 +11950,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                 {{ t('feishu_bot_config') }}
                                 <el-link
                                   type="primary"
-                                  :underline="false"
+                                  underline="never"
                                   href="https://open.feishu.cn/app"
                                   target="_blank"
                                 >
@@ -11870,7 +11959,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                 </el-link>
                                 <el-link
                                   type="primary"
-                                  :underline="false"
+                                  underline="never"
                                   href="https://open.feishu.cn/document/develop-an-echo-bot/introduction?from=op_develop_app"
                                   target="_blank"
                                 >
@@ -12088,7 +12177,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                 {{ t('dingtalk_bot_config') }}
                                 <el-link
                                   type="primary"
-                                  :underline="false"
+                                  underline="never"
                                   href="https://open-dev.dingtalk.com/fe/app"
                                   target="_blank"
                                 >
@@ -12097,7 +12186,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                 </el-link>
                                 <el-link
                                   type="primary"
-                                  :underline="false"
+                                  underline="never"
                                   href="https://open.dingtalk.com/document/orgapp/stream-mode"
                                   target="_blank"
                                 >
@@ -12281,7 +12370,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                 {{ t('telegram_bot_config') }}
                                 <el-link
                                   type="primary"
-                                  :underline="false"
+                                  underline="never"
                                   href="https://t.me/BotFather"
                                   target="_blank"
                                 >
@@ -12290,7 +12379,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                 </el-link>
                                 <el-link
                                   type="primary"
-                                  :underline="false"
+                                  underline="never"
                                   href="https://core.telegram.org/bots/api"
                                   target="_blank"
                                 >
@@ -12498,11 +12587,11 @@ function updateElement(el, rawMarkdown, formatFn) {
                               <span>
                                 <el-icon><i class="fa-brands fa-discord"></i></el-icon>
                                 {{ t('discord_bot_config') }}
-                                <el-link type="primary" :underline="false" href="https://discord.com/developers/applications" target="_blank">
+                                <el-link type="primary" underline="never" href="https://discord.com/developers/applications" target="_blank">
                                   <el-icon class="mr-1"><i class="fa-solid fa-key"></i></el-icon>
                                   {{ t('gotoDiscordBot') }}
                                 </el-link>
-                                <el-link type="primary" :underline="false" href="https://discord.com/developers/docs/intro" target="_blank">
+                                <el-link type="primary" underline="never" href="https://discord.com/developers/docs/intro" target="_blank">
                                   <el-icon class="mr-1"><i class="fa-solid fa-file"></i></el-icon>
                                   {{ t('discordBotNotice') }}
                                 </el-link>
@@ -12695,7 +12784,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                               <span>
                                 <el-icon><i class="fa-brands fa-slack"></i></el-icon>
                                 {{ t('slack_bot_config') || 'Slack 机器人配置' }}
-                                <el-link type="primary" :underline="false" href="https://api.slack.com/apps" target="_blank">
+                                <el-link type="primary" underline="never" href="https://api.slack.com/apps" target="_blank">
                                   <el-icon class="mr-1"><i class="fa-solid fa-key"></i></el-icon>
                                   {{ t('gotoSlackBot') || '前往 Slack App 控制台' }}
                                 </el-link>
@@ -13016,7 +13105,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                         <p>
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://www.agentparty.top/blog/en/article-0yuan.html" 
                               target="_blank"
                             >
@@ -13027,7 +13116,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             <span>{{ '   ' }}</span>
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://vroid.com/en/studio" 
                               target="_blank"
                             >
@@ -13038,7 +13127,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             <span>{{ '   ' }}</span>
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://hub.vroid.com/en" 
                               target="_blank"
                             >
@@ -13049,7 +13138,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                             <span>{{ '   ' }}</span>
                             <el-link
                               type="primary"
-                              :underline="false"
+                              underline="never"
                               href="https://www.aplaybox.com/search?value=VRM" 
                               target="_blank"
                             >
@@ -13076,9 +13165,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                           </span>
                           <div>
                             <!-- 启动按钮 -->
-                            <el-tooltip :content="t('start_table_pet')" placement="top">
+                            <el-tooltip v-if="isElectron" :content="t('start_table_pet')" placement="top">
                               <el-button 
-                                v-if="isElectron"
+                               
                                 type="primary" 
                                 @click="startVRM" 
                                 circle
@@ -13138,7 +13227,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                   {{ t('goToMainAgentNotice1') }}
                                   <el-link
                                     type="primary"
-                                    :underline="false"
+                                    underline="never"
                                     class="font-medium"
                                     @click="switchToMainAgent"
                                   >
@@ -13181,7 +13270,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                   {{ t('goToMemoryNotice1') }}
                                   <el-link
                                     type="primary"
-                                    :underline="false"
+                                    underline="never"
                                     class="font-medium"
                                     @click="switchToMemory"
                                   >
@@ -13673,7 +13762,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                     {{ t('SeparatorNotice1') }}
                                     <el-link
                                       type="primary"
-                                      :underline="false"
+                                      underline="never"
                                       class="font-medium"
                                       @click="switchToTTS"
                                     >
@@ -14081,7 +14170,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                   {{t('bilibili')}}
                                   <el-link
                                     type="primary"
-                                    :underline="false"
+                                    underline="never"
                                     href="https://open-live.bilibili.com/" 
                                     target="_blank"
                                   >
@@ -14243,7 +14332,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                   YouTube
                                   <el-link
                                     type="primary"
-                                    :underline="false"
+                                    underline="never"
                                     href="https://console.cloud.google.com/apis/credentials"
                                     target="_blank"
                                   >
@@ -14358,7 +14447,7 @@ function updateElement(el, rawMarkdown, formatFn) {
                                   Twitch
                                   <el-link
                                     type="primary"
-                                    :underline="false"
+                                    underline="never"
                                     href="https://twitchtokengenerator.com"
                                     target="_blank"
                                   >
@@ -14720,8 +14809,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                         </el-button>
                       </el-tooltip>
                       <div class="card-actions">
-                        <el-tooltip :content="t('openExtensionInBrowser')" placement="top">
-                          <!-- 浏览器打开按钮 -->
+                        <!-- 浏览器打开按钮 -->
+<el-tooltip :content="t('openExtensionInBrowser')" placement="top">
+  
                           <el-button
                             type="default"
                             circle
@@ -14730,10 +14820,11 @@ function updateElement(el, rawMarkdown, formatFn) {
                             <i class="fa-solid fa-external-link"></i>
                           </el-button>
                         </el-tooltip>
-                        <el-tooltip :content="t('openExtensionInWindow')" placement="top">
-                          <!-- 独立窗口打开按钮（仅在Electron环境下显示） -->
+                        <!-- 独立窗口打开按钮（仅在Electron环境下显示） -->
+<el-tooltip v-if="isElectron" :content="t('openExtensionInWindow')" placement="top">
+  
                           <el-button
-                            v-if="isElectron"
+                           
                             type="primary"
                             circle
                             size="small"
@@ -14742,8 +14833,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                             <i class="fa-solid fa-window-restore"></i>
                           </el-button>
                         </el-tooltip>
-                        <el-tooltip :content="t('deleteExtension')" placement="top">
-                          <!-- 更新删除按钮样式 -->
+                        <!-- 更新删除按钮样式 -->
+<el-tooltip :content="t('deleteExtension')" placement="top">
+  
                           <el-button @click="removeExtension(extension)" type="danger" circle size="small">
                             <i class="fa-solid fa-trash"></i>
                           </el-button>
@@ -15593,9 +15685,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                         <div class="button-group">
                             
                             <!-- 常用功能按钮复用 -->
-                            <el-tooltip :content="t('newChat')" placement="top">
+                            <el-tooltip v-if="!isCapsuleMode" :content="t('newChat')" placement="top">
                               <el-button
-                                v-if="!isCapsuleMode"
+                               
                                 @click="clearMessages"
                                 class="icon-btn clear-btn"
                                 type="primary"
@@ -15604,9 +15696,9 @@ function updateElement(el, rawMarkdown, formatFn) {
                               </el-button>
                             </el-tooltip>
 
-                            <el-tooltip :content="t('chatHistory')" placement="top">
+                            <el-tooltip v-if="!isCapsuleMode" :content="t('chatHistory')" placement="top">
                               <el-button
-                                v-if="!isCapsuleMode"
+                               
                                 @click="showHistoryDialog = true"
                                 class="icon-btn history-btn"
                                 :type="conversations.length === 0 ? 'default' : 'primary'"

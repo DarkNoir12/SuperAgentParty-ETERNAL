@@ -13,14 +13,14 @@ from mcp.client.websocket import websocket_client
 from mcp.client.streamable_http import streamablehttp_client
 from contextlib import AsyncExitStack, asynccontextmanager
 
-# ---------- 工具 ----------
+# ---------- Tools ----------
 def get_command_path(command_name: str, default_command: str = "uv") -> str:
     path = shutil.which(command_name) or shutil.which(default_command)
     if not path:
-        raise FileNotFoundError(f"未找到 {command_name} 或 {default_command}")
+        raise FileNotFoundError(f"{command_name} or {default_command} not found")
     return path
 
-# ---------- 连接管理 ----------
+# ---------- Connection Management ----------
 class ConnectionManager:
     def __init__(self) -> None:
         self.session: Optional[ClientSession] = None
@@ -29,7 +29,7 @@ class ConnectionManager:
     @asynccontextmanager
     async def connect(self, config: dict) -> AsyncIterator["ConnectionManager"]:
         async with AsyncExitStack() as stack:
-            # 1. 建立传输层
+            # 1. Establish transport layer
             if "command" in config:
                 from mcp.client.stdio import StdioServerParameters
                 server_params = StdioServerParameters(
@@ -60,18 +60,18 @@ class ConnectionManager:
                     read, write, _ = transport
                 else:
                     read, write = transport
-                # ---------- 首包校验（仅 SSE 需要） ----------
+                # ---------- Initial packet validation (only needed for SSE) ----------
                 if mcptype == "sse":
                     try:
-                        # 非阻塞读 1 条消息，超时 3 秒
+                        # Non-blocking read of 1 message, 3 second timeout
                         with anyio.move_on_after(3):
                             await read.receive()
                     except anyio.EndOfStream:
-                        # 服务器立刻关闭，说明失败
+                        # Server closed immediately, indicates failure
                         raise RuntimeError("SSE stream closed immediately")
                     except Exception as e:
                         raise RuntimeError(f"SSE initial handshake failed: {e}") from e
-            # 2. 建立会话
+            # 2. Establish session
             self.session = await stack.enter_async_context(ClientSession(read, write))
             await self.session.initialize()
             self.tools = [t.name for t in (await self.session.list_tools()).tools]
@@ -80,7 +80,7 @@ class ConnectionManager:
             yield self
 
 
-# ---------- 客户端 ----------
+# ---------- Client ----------
 class McpClient:
     def __init__(self) -> None:
         self._conn: Optional[ConnectionManager] = None
@@ -88,14 +88,14 @@ class McpClient:
         self._lock = asyncio.Lock()
         self._monitor_task: Optional[asyncio.Task] = None
         self._shutdown = False
-        self._on_failure_callback: Optional[callable] = None  # 新增：失败回调
+        self._on_failure_callback: Optional[callable] = None  # Added: failure callback
         self._tools: list[str] = []
         self._tools_list = []
 
     async def initialize(self, server_name: str, server_config: dict, on_failure_callback: Optional[callable] = None) -> None:
-        """非阻塞初始化：拉起连接监控协程"""
+        """Non-blocking initialization: start connection monitor coroutine"""
         self._config = server_config
-        self._on_failure_callback = on_failure_callback  # 设置回调
+        self._on_failure_callback = on_failure_callback  # Set callback
         if self._monitor_task is None or self._monitor_task.done():
             self._monitor_task = asyncio.create_task(self._connection_monitor())
 
@@ -109,30 +109,30 @@ class McpClient:
                 pass
 
     async def _connection_monitor(self) -> None:
-        """持续重连逻辑：仅在一个协程里管理 AsyncExitStack"""
+        """Continuous reconnection logic: only managed in one coroutine with AsyncExitStack"""
         while not self._shutdown:
             try:
                 async with ConnectionManager().connect(self._config) as conn:
                     async with self._lock:
                         self._conn = conn
-                    # 心跳检测
+                    # Heartbeat check
                     while not self._shutdown:
                         try:
                             await asyncio.wait_for(self._conn.session.send_ping(), timeout=3)
                         except Exception:
-                            break  # 断线，跳出 inner loop
+                            break  # Connection lost, exit inner loop
                         await asyncio.sleep(30)
             except Exception as e:
                 logging.exception("Connection failed, will retry: %s", e)
                 if self._on_failure_callback:
-                    await self._on_failure_callback(str(e))  # 调用回调
+                    await self._on_failure_callback(str(e))  # Call callback
             finally:
                 async with self._lock:
                     self._conn = None
             if not self._shutdown:
                 await asyncio.sleep(5)
 
-    # ---------- 外部 API ----------
+    # ---------- External API ----------
     async def get_openai_functions(self,disable_tools=[]):
         async with self._lock:
             if not self._conn or not self._conn.session:
@@ -167,7 +167,7 @@ class McpClient:
                 return "Failed to call tool %s: %s" % (tool_name, e)
 
 
-# ---------- 使用示例 ----------
+# ---------- Usage Example ----------
 if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.INFO)
@@ -184,7 +184,7 @@ if __name__ == "__main__":
         await asyncio.sleep(2)
         funcs = await client.get_openai_functions()
         print("OpenAI functions:", funcs)
-        await asyncio.sleep(30)  # 保持连接
+        await asyncio.sleep(30)  # Keep connection alive
         await client.close()
 
     asyncio.run(main())

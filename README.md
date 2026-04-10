@@ -1,11 +1,14 @@
 ![image](static/source/cover.png)
 
 <div align="center">
-  <a href="./README_ZH.md">
+  <a href="./README_CN.md">
     <img src="https://img.shields.io/badge/简体中文-自述文档-00B4AB?style=for-the-badge&logo=markdown"/>
   </a>
   <a href="./README.md">
     <img src="https://img.shields.io/badge/English-Readme-0057D2?style=for-the-badge&logo=markdown"/>
+  </a>
+  <a href="./README_PT.md">
+    <img src="https://img.shields.io/badge/Português-Readme-FF69B4?style=for-the-badge&logo=markdown"/>
   </a>
   <a href="./README_JA.md">
     <img src="https://img.shields.io/badge/日本語-Readme-FF69B4?style=for-the-badge&logo=markdown"/>
@@ -55,26 +58,26 @@
 
 ## Quick Start
 
-### 中国用户下载请点击 **中国用户点击下载** 的链接！
+### Chinese users click the **Chinese users click to download** link!
 
 ### Windows portable package (Recommended! Installation-free source version, support one-click synchronization to the latest version of the warehouse, no need to wait for the desktop version to be packaged)
 
   👉 [Click to download](https://github.com/heshengtao/super-agent-party/releases/download/v0.3.9/super-agent-party-win-v0.3.9.7z)
-  👉 [中国用户点击下载](https://modelscope.cn/models/ailm32442/super-agent-party-portable/resolve/master/v0.3.9/super-agent-party-win-v0.3.9.7z)
+  👉 [Chinese users click to download](https://modelscope.cn/models/ailm32442/super-agent-party-portable/resolve/master/v0.3.9/super-agent-party-win-v0.3.9.7z)
 
-⭐ Note!  You can double-click `一键更新(update).bat` to update the software, or you can double-click `一键启动(start).bat` to start the software.The operating system must be **Windows 10/11, Windows Server 2025**, or a later version!
+⭐ Note!  You can double-click `quick-update.bat` to update the software, or you can double-click `quick-start.bat` to start the software.The operating system must be **Windows 10/11, Windows Server 2025**, or a later version!
 
 ### Windows Desktop Installation
 
   👉 [Click to download](https://github.com/heshengtao/super-agent-party/releases/download/v0.3.9/Super-Agent-Party-Setup-0.3.9.exe)
-  👉 [中国用户点击下载](https://modelscope.cn/models/ailm32442/super-agent-party-portable/resolve/master/v0.3.9/Super-Agent-Party-Setup-0.3.9.exe)
+  👉 [Chinese users click to download](https://modelscope.cn/models/ailm32442/super-agent-party-portable/resolve/master/v0.3.9/Super-Agent-Party-Setup-0.3.9.exe)
 
 ⭐ Note! Choose to install only for the current user during installation, otherwise, administrator privileges will be required to start.The operating system must be **Windows 10/11, Windows Server 2025**, or a later version!
 
 ### MacOS Integrated Package (Currently only supports M chips, no-install source code version, supports one-click sync to the latest repository version, no need to wait for desktop version packaging)
 > **Suitable for developers/advanced users**: No-install source code version, supports one-click sync to the latest repository version, no need to wait for desktop version packaging.
 
-👉 [International users click to download](https://github.com/heshengtao/super-agent-party/releases/download/v0.3.9/super-agent-party-mac-v0.3.9.7z)  
+👉 [Click to download](https://github.com/heshengtao/super-agent-party/releases/download/v0.3.9/super-agent-party-mac-v0.3.9.7z)
 👉 [Chinese users click to download](https://modelscope.cn/models/ailm32442/super-agent-party-portable/resolve/master/v0.3.9/super-agent-party-mac-v0.3.9.7z)
 
 #### 🚀 Usage Steps
@@ -89,17 +92,17 @@ sudo xattr -rd com.apple.quarantine
 **2. Grant Script Execution Permissions**
 Navigate to the folder in Terminal and execute:
 ```shell
-chmod +x 一键更新(update).sh 一键启动(start).sh
+chmod +x quick-update.sh quick-start.sh
 ```
 
 **3. Run the Software**
-- **First use/Update:** It is recommended to first execute `./一键更新(update).sh` to ensure dependencies are synced to the latest.
-- **Daily startup:** Directly execute `./一键启动(start).sh`.
+- **First use/Update:** It is recommended to first execute `./quick-update.sh` to ensure dependencies are synced to the latest.
+- **Daily startup:** Directly execute `./quick-start.sh`.
 
 ### MacOS Desktop Installation (Currently only M chips are supported.)
 
   👉 [Click to download](https://github.com/heshengtao/super-agent-party/releases/download/v0.3.9/Super-Agent-Party-0.3.9-Mac.dmg)
-  👉 [中国用户点击下载](https://modelscope.cn/models/ailm32442/super-agent-party-portable/resolve/master/v0.3.9/Super-Agent-Party-0.3.9-Mac.dmg)
+  👉 [Chinese users click to download](https://modelscope.cn/models/ailm32442/super-agent-party-portable/resolve/master/v0.3.9/Super-Agent-Party-0.3.9-Mac.dmg)
 
 ⭐Attention! After downloading, drag the app file of the dmg file into the `/Applications` directory, then open end point, execute the following command and enter the root password to remove the attached Quarantine attribute from the network download:
 
@@ -236,6 +239,7 @@ Added a brand-new extension system. You can check available plugins at [plugins 
 Please refer to the following document for the main functions:
   - 👉 [Chinese document](https://gcnij7egmcww.feishu.cn/wiki/DPRKwdetCiYBhPkPpXWcugujnRc)
   - 👉 [English document](https://temporal-lantern-7e8.notion.site/super-agent-party-211b2b2cb6f180c899d1c27a98c4965d)
+  - 👉 [Japanese document](https://wiki.agentparty.top)
 
 | Feature | Details |
 | --- | --- |
@@ -299,10 +303,10 @@ We extend our gratitude to all contributors of the third-party libraries and com
 ### Follow us
 <div align="center">
   <a href="https://space.bilibili.com/26978344">
-    <img src="doc/image/B.png" width="100" height="100" style="border-radius: 80%; overflow: hidden;" alt="octocat"/>
+    <img src="doc/image/B.png" width="100" height="100" style="border-radius: 80%; overflow: hidden;" alt="bilibili"/>
   </a>
   <a href="https://www.youtube.com/@agentParty">
-    <img src="doc/image/YT.png" width="100" height="100" style="border-radius: 80%; overflow: hidden;" alt="octocat"/>
+    <img src="doc/image/YT.png" width="100" height="100" style="border-radius: 80%; overflow: hidden;" alt="youtube"/>
   </a>
 </div>
 

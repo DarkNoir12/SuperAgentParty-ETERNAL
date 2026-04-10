@@ -1,45 +1,53 @@
 const remoteMain = require('@electron/remote/main')
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, Tray, Menu, session,globalShortcut} = require('electron')
-const { clipboard, nativeImage,desktopCapturer  } = require('electron')
-const { autoUpdater } = require('electron-updater')
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, Tray, Menu, session, globalShortcut } = require('electron')
+const { clipboard, nativeImage, desktopCapturer } = require('electron')
+// Lazy-load autoUpdater to avoid initialization race condition
+let _autoUpdater = null;
+function getAutoUpdater() {
+  if (!_autoUpdater) {
+    try { _autoUpdater = require('electron-updater').autoUpdater; }
+    catch (e) { console.warn('autoUpdater unavailable:', e.message); }
+  }
+  return _autoUpdater;
+}
 const path = require('path')
 const { spawn } = require('child_process')
 const { exec } = require('child_process');
 const { download } = require('electron-dl');
 const fs = require('fs')
 const os = require('os')
-const net = require('net') // 添加 net 模块用于端口检测
+const net = require('net') // Add net module for port detection
 const dgram = require('dgram');
 const osc = require('osc');
-// ★ VMC：UDP 收发资源
-let vmcUdpPort = null;          // osc.UDPPort 实例
-let vmcReceiverActive = false;  // 接收是否运行
-let vrmWindows = []; 
+// ★ VMC: UDP send/receive resources
+let vmcUdpPort = null;          // osc.UDPPort instance
+let vmcReceiverActive = false;  // Whether receiver is running
+let vrmWindows = [];
 let shotOverlay = null
 let isMac = process.platform === 'darwin';
-const vmcSendSocket = dgram.createSocket('udp4'); // 发送复用同一 socket
-const MAX_LOG_LINES = 2000; // 保留最近2000行日志
-let logBuffer = []; // 内存日志缓冲区
-let activeDownloads = new Map(); 
+const vmcSendSocket = dgram.createSocket('udp4'); // Sender reuses the same socket
+const MAX_LOG_LINES = 2000; // Keep the latest 2000 lines of logs
+let logBuffer = []; // In-memory log buffer
+let activeDownloads = new Map();
 function appendLogToBuffer(source, data) {
   const timestamp = new Date().toLocaleTimeString();
   const lines = data.toString().split(/\r?\n/);
-  
+
   lines.forEach(line => {
     if (line.trim()) {
       logBuffer.push(`[${timestamp}] [${source}] ${line}`);
     }
   });
 
-  // 清理旧日志，防止内存无限增长
+  // Clean up old logs to prevent memory from growing indefinitely
   if (logBuffer.length > MAX_LOG_LINES) {
     logBuffer = logBuffer.slice(logBuffer.length - MAX_LOG_LINES);
   }
 }
 async function cropDesktop(rect) {
   if (!rect || typeof rect.x !== 'number' || typeof rect.y !== 'number' ||
-      typeof rect.width !== 'number' || typeof rect.height !== 'number') {
-    throw new Error('cropDesktop 需要 {x,y,width,height} 且均为数字')
+    typeof rect.width !== 'number' || typeof rect.height !== 'number') {
+    throw new Error('cropDesktop requires {x,y,width,height} and all must be numbers')
   }
 
   const { width, height } = screen.getPrimaryDisplay().bounds
@@ -47,13 +55,13 @@ async function cropDesktop(rect) {
     types: ['screen'],
     thumbnailSize: { width, height }
   })
-  if (!sources.length) throw new Error('无法获取屏幕源')
+  if (!sources.length) throw new Error('Unable to get screen source')
 
-  // 1. 拿到全屏 PNG 缓冲区
+  // 1. Get fullscreen PNG buffer
   const pngBuffer = sources[0].thumbnail.toPNG()
 
-  // 2. 用 Electron 自带的 nativeImage 裁
-  const img  = nativeImage.createFromBuffer(pngBuffer)
+  // 2. Crop using Electron's built-in nativeImage
+  const img = nativeImage.createFromBuffer(pngBuffer)
   const cropped = img.crop({
     x: Math.floor(rect.x),
     y: Math.floor(rect.y),
@@ -61,11 +69,11 @@ async function cropDesktop(rect) {
     height: Math.floor(rect.height)
   })
 
-  // 3. 直接返回 Buffer，下游无需改
+  // 3. Return Buffer directly, downstream doesn't need changes
   return cropped.toPNG()
 }
 
-// ★ 替换原来的 startVMCReceiver
+// ★ Replace the original startVMCReceiver
 function startVMCReceiver(cfg) {
   if (vmcReceiverActive) return;
   vmcUdpPort = new osc.UDPPort({
@@ -76,7 +84,7 @@ function startVMCReceiver(cfg) {
   vmcUdpPort.open();
   vmcUdpPort.on('message', (oscMsg) => {
 
-    /* -------- 1. 骨骼 -------- */
+    /* -------- 1. Bones -------- */
     if (oscMsg.address === '/VMC/Ext/Bone/Pos') {
       if (!Array.isArray(oscMsg.args) || oscMsg.args.length < 8) return;
       const [boneName, x, y, z, qx, qy, qz, qw] = oscMsg.args.map(v => v.value ?? v);
@@ -84,14 +92,14 @@ function startVMCReceiver(cfg) {
 
       vrmWindows.forEach(w => {
         if (!w.isDestroyed()) {
-          w.webContents.send('vmc-bone', { boneName, position:{x,y,z}, rotation:{x:qx,y:qy,z:qz,w:qw} });
+          w.webContents.send('vmc-bone', { boneName, position: { x, y, z }, rotation: { x: qx, y: qy, z: qz, w: qw } });
           w.webContents.send('vmc-osc-raw', oscMsg);
         }
       });
       return;
     }
 
-    /* -------- 2. 表情 -------- */
+    /* -------- 2. Expressions -------- */
     if (oscMsg.address === '/VMC/Ext/Blend/Val') {
       if (!Array.isArray(oscMsg.args) || oscMsg.args.length < 2) return;
       vrmWindows.forEach(w => {
@@ -100,9 +108,9 @@ function startVMCReceiver(cfg) {
       return;
     }
 
-    /* -------- 3. 表情 Apply -------- */
+    /* -------- 3. Expression Apply -------- */
     if (oscMsg.address === '/VMC/Ext/Blend/Apply') {
-      // Apply 不带参数，长度 0 也合法
+      // Apply carries no parameters, so length 0 is also valid
       vrmWindows.forEach(w => {
         if (!w.isDestroyed()) w.webContents.send('vmc-osc-raw', oscMsg);
       });
@@ -111,23 +119,23 @@ function startVMCReceiver(cfg) {
 
 
   vmcReceiverActive = true;
-  console.log(`[VMC] 接收已启动 @ ${cfg.receive.port}`);
+  console.log(`[VMC] Receiver started @ ${cfg.receive.port}`);
 }
 function stopVMCReceiver() {
   if (!vmcReceiverActive) return;
   vmcUdpPort.close();
   vmcUdpPort = null;
   vmcReceiverActive = false;
-  console.log('[VMC] 接收已停止');
+  console.log('[VMC] Receiver stopped');
 }
 
-// 发送 VMC Bone -------------------------------------------------
+// Send VMC Bone -------------------------------------------------
 function sendVMCBoneMain(data) {
   if (!data) return;
   const { boneName, position, rotation } = data;
   if (!boneName || !position || !rotation) return;
 
-  const { host, port } = global.vmcCfg.send;          // ← 面板配置
+  const { host, port } = global.vmcCfg.send;          // ← Panel configuration
   const oscMsg = osc.writePacket({
     address: `/VMC/Ext/Bone/Pos`,
     args: [
@@ -146,13 +154,13 @@ function sendVMCBoneMain(data) {
   });
 }
 
-// 发送 VMC Blend ------------------------------------------------
+// Send VMC Blend ------------------------------------------------
 function sendVMCBlendMain(data) {
   if (!data) return;
   const { blendName, weight } = data;
   if (typeof blendName !== 'string' || typeof weight !== 'number') return;
 
-  const { host, port } = global.vmcCfg.send;          // ← 面板配置
+  const { host, port } = global.vmcCfg.send;          // ← Panel configuration
   const oscMsg = osc.writePacket({
     address: '/VMC/Ext/Blend/Val',
     args: [
@@ -165,9 +173,9 @@ function sendVMCBlendMain(data) {
   });
 }
 
-// 发送 VMC Blend Apply ------------------------------------------
+// Send VMC Blend Apply ------------------------------------------
 function sendVMCBlendApplyMain() {
-  const { host, port } = global.vmcCfg.send;          // ← 面板配置
+  const { host, port } = global.vmcCfg.send;          // ← Panel configuration
   const oscMsg = osc.writePacket({
     address: '/VMC/Ext/Blend/Apply',
     args: [],
@@ -178,7 +186,7 @@ function sendVMCBlendApplyMain() {
 let pythonExec;
 let isQuitting = false;
 
-// 判断操作系统
+// Determine operating system
 if (os.platform() === 'win32') {
   // Windows
   pythonExec = path.join('.venv', 'Scripts', 'python.exe');
@@ -189,11 +197,11 @@ if (os.platform() === 'win32') {
 
 
 function getCleanUserAgent() {
-  const chromeVersion = '124.0.0.0'; // 必须与前端代码中的版本保持一致！
+  const chromeVersion = '124.0.0.0'; // Must match the version in the frontend code!
   const baseUA = `Mozilla/5.0 ({os_info}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
-  
+
   let osInfo = '';
-  // Node.js 环境直接用 process.platform
+  // Use process.platform directly in Node.js environment
   switch (process.platform) {
     case 'darwin':
       osInfo = 'Macintosh; Intel Mac OS X 10_15_7';
@@ -211,7 +219,7 @@ function getCleanUserAgent() {
   return baseUA.replace('{os_info}', osInfo);
 }
 
-// 提前计算好，供后面使用
+// Pre-compute for later use
 const REAL_CHROME_UA = getCleanUserAgent();
 
 let mainWindow
@@ -220,28 +228,28 @@ let tray = null
 let updateAvailable = false
 let backendProcess = null
 const HOST = '127.0.0.1'
-let PORT = 3456 // 改为 let，允许修改
-const DEFAULT_PORT = 3456 // 保存默认端口
+let PORT = 3456 // Changed to let, allows modification
+const DEFAULT_PORT = 3456 // Save default port
 const isDev = process.env.NODE_ENV === 'development'
 const locales = {
   'zh-CN': {
-    show: '显示窗口',
-    exit: '退出',
-    cut: '剪切',
-    copy: '复制',
-    paste: '粘贴',
-    copyImage: '复制图片',
-    copyImageLink: '复制图片链接',
-    saveImageAs: '图片另存为...',
-    supportedFiles: '支持的文件',
-    allFiles: '所有文件',
-    supportedimages: '支持的图片',
-    // 新增项
-    openNewTab: '在新标签页打开',
-    copyLink: '复制链接地址',
-    copyLinkText: '复制链接文本',
-    selectAll: '全选',
-    inspect: '检查元素'
+    show: 'Show Window',
+    exit: 'Exit',
+    cut: 'Cut',
+    copy: 'Copy',
+    paste: 'Paste',
+    copyImage: 'Copy Image',
+    copyImageLink: 'Copy Image Link',
+    saveImageAs: 'Save Image As...',
+    supportedFiles: 'Supported Files',
+    allFiles: 'All Files',
+    supportedimages: 'Supported Images',
+    // New items
+    openNewTab: 'Open in New Tab',
+    copyLink: 'Copy Link Address',
+    copyLinkText: 'Copy Link Text',
+    selectAll: 'Select All',
+    inspect: 'Inspect Element'
   },
   'en-US': {
     show: 'Show Window',
@@ -255,7 +263,7 @@ const locales = {
     supportedFiles: 'Supported Files',
     allFiles: 'All Files',
     supportedimages: 'Supported Images',
-    // 新增项
+    // New items
     openNewTab: 'Open in new tab',
     copyLink: 'Copy link address',
     copyLinkText: 'Copy link text',
@@ -264,103 +272,131 @@ const locales = {
   }
 };
 const ALLOWED_EXTENSIONS = [
-  // 办公文档
-    'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'pdf', 'pages', 
-    'numbers', 'key', 'rtf', 'odt', 'epub',
-  
-  // 编程开发
+  // Office documents
+  'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'pdf', 'pages',
+  'numbers', 'key', 'rtf', 'odt', 'epub',
+
+  // Programming & Development
   'js', 'ts', 'py', 'java', 'c', 'cpp', 'h', 'hpp', 'go', 'rs',
   'swift', 'kt', 'dart', 'rb', 'php', 'html', 'css', 'scss', 'less',
-  'vue', 'svelte', 'jsx', 'tsx', 'json', 'xml', 'yml', 'yaml', 
+  'vue', 'svelte', 'jsx', 'tsx', 'json', 'xml', 'yml', 'yaml',
   'sql', 'sh',
-  
-  // 数据配置
+
+  // Data & Configuration
   'csv', 'tsv', 'txt', 'md', 'log', 'conf', 'ini', 'env', 'toml'
-  ];
+];
 const ALLOWED_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
-const ALLOWED_VIDEO_EXTENSIONS =['mp4', 'webm', 'ogg', 'mov', 'avi'];
+const ALLOWED_VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogg', 'mov', 'avi'];
 let currentLanguage = 'zh-CN';
 
-// 构建菜单项
+// Build menu items
 let menu;
 
-// 配置日志文件路径
-const logDir = path.join(app.getPath('userData'), 'logs')
-if (!fs.existsSync(logDir)) {
-  fs.mkdirSync(logDir, { recursive: true })
-}
-
-// 获取配置文件路径
-function getConfigPath() {
-  return path.join(app.getPath('userData'), 'config.json');
-}
-
-// 加载环境变量
-function loadEnvVariables() {
-  const configPath = getConfigPath();
-  if (fs.existsSync(configPath)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      
-      // 遍历配置加载到环境变量
-      for (const key in config) {
-        const val = config[key];
-        // ★ 同样只把基本类型加载到 env
-        if (typeof val === 'string' || typeof val === 'number') {
-          process.env[key] = val;
-        }
-      }
-      return config; // ★ 返回完整配置对象给 CDP 逻辑使用
-    } catch (e) {
-      console.error('加载配置失败:', e);
+// Configure log file path - deferred to avoid app.getPath() before ready
+let _logDir = null;
+function getLogDir() {
+  if (!_logDir) {
+    _logDir = path.join(app.getPath('userData'), 'logs');
+    if (!fs.existsSync(_logDir)) {
+      fs.mkdirSync(_logDir, { recursive: true });
     }
   }
-  return {};
+  return _logDir;
+}
+
+// Get config file path - deferred to avoid app.getPath() before ready
+let _configPath = null;
+function getConfigPath() {
+  if (!_configPath) {
+    _configPath = path.join(app.getPath('userData'), 'config.json');
+  }
+  return _configPath;
+}
+
+// Load environment variables
+function loadEnvVariables() {
+  try {
+    const configPath = getConfigPath();
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+        // Iterate through config and load into environment variables
+        for (const key in config) {
+          const val = config[key];
+          // ★ Only load primitive types into env
+          if (typeof val === 'string' || typeof val === 'number') {
+            process.env[key] = val;
+          }
+        }
+        return config; // ★ Return full config object for CDP logic
+      } catch (e) {
+        console.error('Failed to load config:', e);
+      }
+    }
+    return {};
+  } catch (e) {
+    return {};
+  }
 }
 
 function saveEnvVariable(key, value) {
-  const configPath = getConfigPath();
-  let config = {};
-  
-  // 1. 读取现有文件
   try {
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    }
-  } catch (e) { console.error('配置文件读取出错:', e); }
+    const configPath = getConfigPath();
+    let config = {};
 
-  // 2. 更新文件内容 (对象和字符串都能存)
-  config[key] = value;
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  
-  // 3. ★ 关键改进：类型检查 ★
-  // 只有字符串或数字才写入 process.env，防止对象变 "[object Object]"
-  if (typeof value === 'string' || typeof value === 'number') {
-    process.env[key] = value;
+    // 1. Read existing file
+    try {
+      if (fs.existsSync(configPath)) {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      }
+    } catch (e) { console.error('Config file read error:', e); }
+
+    // 2. Update file content (both objects and strings can be stored)
+    config[key] = value;
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+    // 3. ★ Key improvement: type check ★
+    // Only strings or numbers are written to process.env to prevent objects from becoming "[object Object]"
+    if (typeof value === 'string' || typeof value === 'number') {
+      process.env[key] = value;
+    }
+  } catch (e) { }
+}
+
+// Defer config loading until app is ready
+let _globalConfig = null;
+function getGlobalConfig() {
+  if (!_globalConfig) {
+    try { _globalConfig = loadEnvVariables() || {}; }
+    catch (e) { _globalConfig = {}; }
+  }
+  return _globalConfig;
+}
+
+// Define global variables
+let SESSION_CDP_PORT = 0; // Initially 0
+let IS_INTERNAL_MODE_ACTIVE = false;
+
+function evaluateCDPConfig() {
+  if (typeof app.getPath !== 'function') return; // Not ready yet
+  const globalConfig = getGlobalConfig();
+  if (globalConfig?.chromeMCPSettings?.type === 'internal' && globalConfig?.chromeMCPSettings?.enabled) {
+
+    // ★ Modification 1: Use port '0' to let the system auto-assign a safe idle port
+    app.commandLine.appendSwitch('remote-debugging-port', '0');
+
+    // ★ Modification 2: Explicitly bind to 127.0.0.1 to prevent firewall alerts
+    app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
+
+    app.commandLine.appendSwitch('remote-allow-origins', '*');
+
+    IS_INTERNAL_MODE_ACTIVE = true;
+    console.log('[CDP] Requested system auto-allocated built-in browser debug port...');
   }
 }
 
-const globalConfig = loadEnvVariables();
-
-// 定义全局变量
-let SESSION_CDP_PORT = 0; // 初始为0
-let IS_INTERNAL_MODE_ACTIVE = false;
-
-if (globalConfig?.chromeMCPSettings?.type === 'internal' && globalConfig?.chromeMCPSettings?.enabled) {
-  
-  // ★ 修改点 1：使用端口 '0'，让系统自动分配一个绝对安全的空闲端口
-  app.commandLine.appendSwitch('remote-debugging-port', '0');
-  
-  // ★ 修改点 2：显式绑定到 127.0.0.1，防止防火墙报警
-  app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
-  
-  app.commandLine.appendSwitch('remote-allow-origins', '*');
-  
-  IS_INTERNAL_MODE_ACTIVE = true;
-  console.log('[CDP] 已请求系统自动分配内置浏览器调试端口...');
-}
-
-// 新增：检测端口是否可用
+// New: Check if port is available
 function isPortAvailable(port) {
   return new Promise((resolve) => {
     const server = net.createServer()
@@ -372,7 +408,7 @@ function isPortAvailable(port) {
   })
 }
 
-// 新增：查找可用端口
+// New: Find available port
 async function findAvailablePort(startPort = DEFAULT_PORT, maxAttempts = 20000) {
   for (let i = 0; i < maxAttempts; i++) {
     const port = startPort + i
@@ -380,19 +416,19 @@ async function findAvailablePort(startPort = DEFAULT_PORT, maxAttempts = 20000) 
       return port
     }
   }
-  throw new Error(`无法找到可用端口，已尝试 ${startPort} 到 ${startPort + maxAttempts - 1}`)
+  throw new Error(`Unable to find available port, tried ${startPort} to ${startPort + maxAttempts - 1}`)
 }
 
 
-// 创建骨架屏窗口
+// Create skeleton window
 function createSkeletonWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize
   mainWindow = new BrowserWindow({
     width: width,
     height: height,
     frame: false,
-    titleBarStyle: 'hiddenInset', // macOS 特有：隐藏标题栏但仍显示原生按钮
-    trafficLightPosition: { x: 10, y: 12 }, // 自定义按钮位置（可选）
+    titleBarStyle: 'hiddenInset', // macOS specific: hides title bar but still shows native buttons
+    trafficLightPosition: { x: 10, y: 12 }, // Custom button position (optional)
     show: true,
     icon: 'static/source/icon.png',
     webPreferences: {
@@ -409,22 +445,22 @@ function createSkeletonWindow() {
   })
 
   remoteMain.enable(mainWindow.webContents)
-  
-  // 加载骨架屏页面
+
+  // Load skeleton page
   mainWindow.loadFile(path.join(__dirname, 'static/skeleton.html'))
-  
-  // 设置自动更新
+
+  // Set up auto-update
   setupAutoUpdater()
-  
-  // 窗口状态同步
+
+  // Window state sync
   mainWindow.on('maximize', () => {
     mainWindow.webContents.send('window-state', 'maximized')
   })
   mainWindow.on('unmaximize', () => {
     mainWindow.webContents.send('window-state', 'normal')
   })
-  
-  // 窗口关闭事件处理 - 最小化到托盘而不是退出
+
+  // Window close event handling - minimize to tray instead of exit
   mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
       event.preventDefault()
@@ -435,16 +471,16 @@ function createSkeletonWindow() {
   })
 }
 
-// 修改后的启动后端函数
+// Modified backend start function
 /**
- * 启动后端服务
- * 逻辑：传 port 0 -> 捕获 REAL_PORT_FOUND -> 返回真实端口
+ * Start backend service
+ * Logic: pass port 0 -> capture REAL_PORT_FOUND -> return actual port
  */
 async function startBackend() {
   return new Promise((resolve, reject) => {
     try {
-      console.log('🔍 准备启动后端进程...');
-      const npmCliPath = isDev 
+      console.log('🔍 Preparing to start backend process...');
+      const npmCliPath = isDev
         ? path.join(__dirname, 'node_modules', 'npm', 'bin', 'npm-cli.js')
         : path.join(process.resourcesPath, 'npm', 'bin', 'npm-cli.js');
       const spawnOptions = {
@@ -454,8 +490,8 @@ async function startBackend() {
           ...process.env,
           NODE_ENV: isDev ? 'development' : 'production',
           PYTHONIOENCODING: 'utf-8',
-          PYTHONUNBUFFERED: '1', // 强制 Python 实时刷新缓冲区
-          ELECTRON_NODE_EXEC: process.execPath, 
+          PYTHONUNBUFFERED: '1', // Force Python to flush output buffer in real-time
+          ELECTRON_NODE_EXEC: process.execPath,
           ELECTRON_NPM_CLI: npmCliPath,
         }
       };
@@ -464,7 +500,8 @@ async function startBackend() {
         spawnOptions.windowsHide = !isDev;
       }
 
-      // 获取 Host 配置
+      // Get Host configuration
+      const globalConfig = getGlobalConfig();
       const BACKEND_HOST = (globalConfig?.networkVisible === 'global') ? '0.0.0.0' : '127.0.0.1';
 
       let execPath = "";
@@ -472,7 +509,7 @@ async function startBackend() {
 
       if (isDev) {
         execPath = pythonExec;
-        // 使用 -u 确保输出不被缓存，即便在 import 很多库的情况下
+        // Use -u to ensure output is not cached, even when importing many libraries
         backendArgs = ['-u', 'server.py', '--host', BACKEND_HOST, '--port', '3456'];
       } else {
         const serverExecutable = process.platform === 'win32' ? 'server.exe' : 'server';
@@ -482,30 +519,30 @@ async function startBackend() {
         spawnOptions.cwd = path.dirname(execPath);
       }
 
-      console.log(`🚀 执行路径: ${execPath}`);
+      console.log(`🚀 Execution path: ${execPath}`);
       backendProcess = spawn(execPath, backendArgs, spawnOptions);
 
       let isHandshaked = false;
 
-      // 核心监听逻辑
+      // Core listener logic
       const onData = (data) => {
         const output = data.toString();
-        // 1. 依然保留日志缓冲，供前端查看
+        // 1. Keep log buffer for frontend viewing
         appendLogToBuffer('BACKEND', output);
 
         if (isDev) {
-            // 开发模式下在控制台打印原始输出，方便排查
-            process.stdout.write(`[PY] ${output}`);
+          // Print raw output to console in dev mode for debugging
+          process.stdout.write(`[PY] ${output}`);
         }
 
-        // 2. 尝试解析端口握手信号
+        // 2. Try to parse port handshake signal
         const match = output.match(/REAL_PORT_FOUND:(\d+)/);
         if (match && !isHandshaked) {
           const actualPort = parseInt(match[1], 10);
           if (actualPort > 0) {
             isHandshaked = true;
-            PORT = actualPort; // 更新全局 PORT 变量
-            console.log(`✅ 握手成功！后端运行端口: ${PORT}`);
+            PORT = actualPort; // Update global PORT variable
+            console.log(`✅ Handshake successful! Backend running on port: ${PORT}`);
             resolve(PORT);
           }
         }
@@ -514,27 +551,27 @@ async function startBackend() {
       backendProcess.stdout.on('data', onData);
       backendProcess.stderr.on('data', onData);
 
-      // 进程错误处理
+      // Process error handling
       backendProcess.on('error', (err) => {
-        console.error('❌ 后端启动失败:', err);
+        console.error('❌ Backend failed to start:', err);
         reject(err);
       });
 
-      // 进程意外退出处理
+      // Process unexpected exit handling
       backendProcess.on('close', (code) => {
-        console.log(`ℹ️ 后端进程已退出 (code ${code})`);
+        console.log(`ℹ️ Backend process exited (code ${code})`);
         if (!isHandshaked) {
-          reject(new Error(`后端进程在分配端口前已关闭，退出码: ${code}`));
+          reject(new Error(`Backend process closed before port allocation, exit code: ${code}`));
         }
       });
 
-      // 5分钟超时保护
+      // 5-minute timeout protection
       setTimeout(() => {
         if (!isHandshaked) {
           if (backendProcess) backendProcess.kill();
-          reject(new Error('后端启动超时：未能从 Python 日志捕获 REAL_PORT_FOUND 信号'));
+          reject(new Error('Backend startup timeout: failed to capture REAL_PORT_FOUND signal from Python logs'));
         }
-      }, 360000*5);
+      }, 360000 * 5);
 
     } catch (err) {
       reject(err);
@@ -542,20 +579,19 @@ async function startBackend() {
   });
 }
 
-// 修改等待后端函数
+// Modified wait for backend function
 async function waitForBackend() {
-  const MAX_RETRIES = 60; // 最多等 30 秒
+  const MAX_RETRIES = 60; // Wait up to 30 seconds
   const RETRY_INTERVAL = 500;
   let retries = 0;
 
-  console.log(`⏳ 正在等待 http://127.0.0.1:${PORT}/health 响应...`);
-  console.log(`⏳ 更新后的首次启动时会花费更久的时间，请耐心等待...`);
+  console.log(`⏳ Waiting for http://127.0.0.1:${PORT}/health response...`);
   console.log(`⏳ The first launch after an update may take longer, please be patient...`);
   while (retries < MAX_RETRIES) {
     try {
       const response = await fetch(`http://127.0.0.1:${PORT}/health`);
       if (response.ok) {
-        console.log('✨ 后端健康检查通过！');
+        console.log('✨ Backend health check passed!');
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('backend-ready', { port: PORT });
         }
@@ -566,89 +602,89 @@ async function waitForBackend() {
       await new Promise(resolve => setTimeout(resolve, RETRY_INTERVAL));
     }
   }
-  throw new Error('后端已启动但健康检查响应超时');
+  throw new Error('Backend started but health check response timed out');
 }
-// 通用下载处理函数
+// Generic download handler
 function handleDownloadItem(event, item, webContents) {
-  // 获取主窗口用于发送消息
+  // Get main window for sending messages
   const win = BrowserWindow.getAllWindows()[0];
   if (!win) return;
 
   const downloadId = Date.now().toString();
-  
-  // ★ 这里直接使用最上面定义的 activeDownloads
-  // 如果这里报错，说明你没在文件顶部加 let activeDownloads = new Map();
+
+  // ★ Use activeDownloads defined at the top directly
+  // If this errors, you didn't add `let activeDownloads = new Map();` at the top of the file
   activeDownloads.set(downloadId, item);
 
   const fileName = item.getFilename();
   const filePath = item.getSavePath();
 
-  // 1. 发送开始事件
+  // 1. Send start event
   win.webContents.send('download-started', {
-      id: downloadId,
-      filename: fileName,
-      totalBytes: item.getTotalBytes(),
-      path: filePath
+    id: downloadId,
+    filename: fileName,
+    totalBytes: item.getTotalBytes(),
+    path: filePath
   });
 
-  // 2. 监听状态更新
+  // 2. Listen for status updates
   item.on('updated', (event, state) => {
-      if (state === 'interrupted') {
-          win.webContents.send('download-updated', { id: downloadId, state: 'interrupted' });
-      } else if (state === 'progressing') {
-          if (item.isPaused()) {
-              win.webContents.send('download-updated', { id: downloadId, state: 'paused' });
-          } else {
-              win.webContents.send('download-updated', {
-                  id: downloadId,
-                  state: 'progressing',
-                  receivedBytes: item.getReceivedBytes(),
-                  totalBytes: item.getTotalBytes(),
-                  progress: item.getTotalBytes() > 0 ? item.getReceivedBytes() / item.getTotalBytes() : 0
-              });
-          }
-      }
-  });
-
-  // 3. 监听完成
-  item.once('done', (event, state) => {
-      win.webContents.send('download-done', {
+    if (state === 'interrupted') {
+      win.webContents.send('download-updated', { id: downloadId, state: 'interrupted' });
+    } else if (state === 'progressing') {
+      if (item.isPaused()) {
+        win.webContents.send('download-updated', { id: downloadId, state: 'paused' });
+      } else {
+        win.webContents.send('download-updated', {
           id: downloadId,
-          state: state,
-          path: item.getSavePath()
-      });
-      // 下载完成，移除引用
-      activeDownloads.delete(downloadId);
+          state: 'progressing',
+          receivedBytes: item.getReceivedBytes(),
+          totalBytes: item.getTotalBytes(),
+          progress: item.getTotalBytes() > 0 ? item.getReceivedBytes() / item.getTotalBytes() : 0
+        });
+      }
+    }
+  });
+
+  // 3. Listen for completion
+  item.once('done', (event, state) => {
+    win.webContents.send('download-done', {
+      id: downloadId,
+      state: state,
+      path: item.getSavePath()
+    });
+    // Download complete, remove reference
+    activeDownloads.delete(downloadId);
   });
 }
 
-// 2. 修改监听函数，同时监听两个会话
+// 2. Modified listener function, listens to both sessions simultaneously
 function setupDownloadListener(win) {
-    
-    // A. 监听主窗口默认会话 (用于应用自身的下载)
-    win.webContents.session.on('will-download', (event, item, webContents) => {
-        handleDownloadItem(win, event, item, webContents);
-    });
 
-    // B. ★★★ 关键修复：监听 Webview 的隔离会话 ★★★
-    // 这里的字符串必须和你 HTML 里 <webview partition="..."> 的值一模一样！
-    // 你之前的代码里写的是 'persist:party-browser-session'
-    const webviewSession = session.fromPartition('persist:party-browser-session');
-    
-    webviewSession.on('will-download', (event, item, webContents) => {
-        // 让主窗口 (win) 去通知渲染进程
-        handleDownloadItem(win, event, item, webContents);
-    });
+  // A. Listen to main window default session (for app's own downloads)
+  win.webContents.session.on('will-download', (event, item, webContents) => {
+    handleDownloadItem(win, event, item, webContents);
+  });
+
+  // B. ★★★ Key fix: Listen to Webview's isolated session ★★★
+  // This string must exactly match `<webview partition="...">` in your HTML!
+  // Your previous code had 'persist:party-browser-session'
+  const webviewSession = session.fromPartition('persist:party-browser-session');
+
+  webviewSession.on('will-download', (event, item, webContents) => {
+    // Let main window (win) notify the render process
+    handleDownloadItem(win, event, item, webContents);
+  });
 }
 
 
-// 处理前端发来的控制指令 (暂停/继续/取消)
+// Handle control commands from frontend (pause/resume/cancel)
 ipcMain.handle('download-control', (event, { id, action }) => {
-  // ★ 同样使用顶部的 activeDownloads
+  // ★ Also uses activeDownloads from the top
   const item = activeDownloads.get(id);
-  
+
   if (!item) {
-    console.log(`未找到下载任务 ID: ${id}`);
+    console.log(`Download task not found ID: ${id}`);
     return;
   }
 
@@ -665,79 +701,81 @@ ipcMain.handle('download-control', (event, { id, action }) => {
   }
 });
 
-// 打开文件所在文件夹
+// Open the folder containing the file
 ipcMain.handle('show-item-in-folder', (event, filePath) => {
-    if(filePath) shell.showItemInFolder(filePath);
+  if (filePath) shell.showItemInFolder(filePath);
 });
 
-// 配置自动更新
+// Configure auto update
 function setupAutoUpdater() {
-  autoUpdater.autoDownload = false; // 先禁用自动下载
+  const au = getAutoUpdater();
+  if (!au) return;
+  au.autoDownload = false; // Disable auto download first
   if (isDev) {
-    autoUpdater.on('error', (err) => {
+    au.on('error', (err) => {
       mainWindow.webContents.send('update-error', err.message);
     });
   }
-  autoUpdater.on('update-available', (info) => {
+  au.on('update-available', (info) => {
     updateAvailable = true;
-    // 显示更新按钮并开始下载
+    // Show update button and start download
     mainWindow.webContents.send('update-available', info);
-    autoUpdater.downloadUpdate(); // 自动开始下载
+    au.downloadUpdate(); // Auto start download
   });
-  autoUpdater.on('download-progress', (progressObj) => {
+  au.on('download-progress', (progressObj) => {
     mainWindow.webContents.send('download-progress', {
       percent: progressObj.percent.toFixed(1),
       transferred: (progressObj.transferred / 1024 / 1024).toFixed(2),
       total: (progressObj.total / 1024 / 1024).toFixed(2)
     });
   });
-  autoUpdater.on('update-downloaded', () => {
+  au.on('update-downloaded', () => {
     mainWindow.webContents.send('update-downloaded');
   });
 }
 
 const PROTOCOL = 'sap';
 
-// --- 1. 尽早获取单实例锁 ---
+// --- 1. Get single instance lock early ---
 const gotTheLock = app.requestSingleInstanceLock();
 
-// --- 2. 如果不是第一个实例，直接退出，不要执行任何其他代码 ---
+// --- 2. If not the first instance, exit immediately without executing any other code ---
 if (!gotTheLock) {
-  // 在 Windows 上，第二个实例启动是因为点击了协议链接
-  // 我们需要解析参数传给第一个实例，然后立即退出
+  // On Windows, the second instance starts because the protocol link was clicked
+  // We need to parse the parameters and pass to the first instance, then exit immediately
   const startUrl = process.argv.find(arg => arg.startsWith(`${PROTOCOL}://`));
   if (startUrl) {
-    // 这里其实不需要做什么，因为 second-instance 事件会在第一个实例触发
-    // 第二个实例直接退出即可
+    // No need to do anything here, the second-instance event will trigger on the first instance
+    // The second instance just exits
     console.log('Second instance detected with URL:', startUrl);
   }
   app.quit();
-  return; // ← 关键：直接返回，阻止后续所有代码执行
+  return; // ← Critical: return immediately, prevent all subsequent code from executing
 }
 
-// --- 3. 只有第一个实例才会执行到这里 ---
+// --- 3. Only the first instance reaches here ---
 let pendingExtensionUrl = null;
 
-// Windows 冷启动处理（第一个实例启动时就带有协议参数）
+// Windows cold start handling (first instance starts with protocol parameters)
 const startUrl = process.argv.find(arg => arg.startsWith(`${PROTOCOL}://`));
 if (startUrl) {
   pendingExtensionUrl = startUrl;
 }
 
 app.on('second-instance', (event, commandLine) => {
-  // 第二个实例启动时触发，在这里激活第一个实例的窗口并处理 URL
+  // Triggered when second instance starts, activate first instance window and handle URL here
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
   }
-  
-  // 解析命令行参数中的 URL
+
+  // Parse URL from command line arguments
   const url = commandLine.find(arg => arg.startsWith(`${PROTOCOL}://`));
   handleProtocolUrl(url);
 });
 
-// 注册协议（只在第一个实例中执行）
+// Register protocol (only executed in the first instance)
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
@@ -756,111 +794,113 @@ app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('enable-features', 'NetworkService,NetworkServiceInProcess');
 app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy,SameSiteByDefaultCookies,CookiesWithoutSameSiteMustBeSecure,LogAds');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
-// 只有在获得锁（第一个实例）时才执行初始化
+// Only execute initialization when lock is obtained (first instance)
 app.whenReady().then(async () => {
   try {
 
+    // Initialize CDP configuration for internal Chrome MCP
+    evaluateCDPConfig();
 
     const partySession = session.fromPartition('persist:party-browser-session');
 
-    // 拦截请求头，进行深度伪装
+    // Intercept request headers for deep spoofing
     partySession.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, (details, callback) => {
-        const headers = details.requestHeaders;
-        
-        // 1. 强制 UA
-        headers['User-Agent'] = REAL_CHROME_UA;
+      const headers = details.requestHeaders;
 
-        // 2. 伪造 Sec-Ch-Ua (Client Hints)
-        // 这是 Google 检查的重点
-        const brand = `"Chromium";v="${CHROME_MAJOR}", "Google Chrome";v="${CHROME_MAJOR}", "Not-A.Brand";v="99"`;
-        headers['Sec-Ch-Ua'] = brand;
-        headers['Sec-Ch-Ua-Mobile'] = '?0';
-        headers['Sec-Ch-Ua-Full-Version'] = `"${CHROME_VERSION}"`;
-        headers['Sec-Ch-Ua-Full-Version-List'] = brand;
-        
-        // 3. 平台伪装 (根据 process.platform 动态设置)
-        let platform = 'Windows';
-        if (process.platform === 'darwin') platform = 'macOS';
-        else if (process.platform === 'linux') platform = 'Linux';
-        headers['Sec-Ch-Ua-Platform'] = `"${platform}"`;
+      // 1. Force UA
+      headers['User-Agent'] = REAL_CHROME_UA;
 
-        // 4. 删除 Electron 特征头
-        delete headers['Sec-Ch-Ua-Model']; // 桌面端通常没有 Model
-        delete headers['Electron-Major-Version'];
-        delete headers['X-Electron-App-Name'];
+      // 2. Spoof Sec-Ch-Ua (Client Hints)
+      // This is a key check point for Google
+      const brand = `"Chromium";v="${CHROME_MAJOR}", "Google Chrome";v="${CHROME_MAJOR}", "Not-A.Brand";v="99"`;
+      headers['Sec-Ch-Ua'] = brand;
+      headers['Sec-Ch-Ua-Mobile'] = '?0';
+      headers['Sec-Ch-Ua-Full-Version'] = `"${CHROME_VERSION}"`;
+      headers['Sec-Ch-Ua-Full-Version-List'] = brand;
 
-        callback({ requestHeaders: headers });
+      // 3. Platform spoofing (set dynamically based on process.platform)
+      let platform = 'Windows';
+      if (process.platform === 'darwin') platform = 'macOS';
+      else if (process.platform === 'linux') platform = 'Linux';
+      headers['Sec-Ch-Ua-Platform'] = `"${platform}"`;
+
+      // 4. Remove Electron fingerprint headers
+      delete headers['Sec-Ch-Ua-Model']; // Desktop usually doesn't have Model
+      delete headers['Electron-Major-Version'];
+      delete headers['X-Electron-App-Name'];
+
+      callback({ requestHeaders: headers });
     });
     app.on('session-created', (sess) => {
-        // console.log('发现新 Session 创建:', sess.getUserAgent()); 
-        
-        // 给每一个新创建的会话（包括 webview 的）都挂上下载监听
-        sess.on('will-download', (event, item, webContents) => {
-            console.log('捕获到下载请求 (来自 Webview/Session):', item.getFilename());
-            handleDownloadItem(event, item, webContents);
-        });
+      // console.log('New Session created:', sess.getUserAgent());
+
+      // Attach download listener to every newly created session (including webview)
+      sess.on('will-download', (event, item, webContents) => {
+        console.log('Download request captured (from Webview/Session):', item.getFilename());
+        handleDownloadItem(event, item, webContents);
+      });
     });
     session.defaultSession.on('will-download', (event, item, webContents) => {
-        console.log('捕获到下载请求 (来自主窗口):', item.getFilename());
-        handleDownloadItem(event, item, webContents);
-    });    
-      // 默认配置
+      console.log('Download request captured (from main window):', item.getFilename());
+      handleDownloadItem(event, item, webContents);
+    });
+    // Default configuration
     global.vmcCfg = {
-      receive: { enable: false, port: 39539,syncExpression: false },
-      send:    { enable: false, host: '127.0.0.1', port: 39540 }
+      receive: { enable: false, port: 39539, syncExpression: false },
+      send: { enable: false, host: '127.0.0.1', port: 39540 }
     };
     ipcMain.handle('get-vmc-config', () => {
-      // 保证字段存在，避免 undefined
+      // Ensure field exists to avoid undefined
       global.vmcCfg.receive.syncExpression ??= false;
       return global.vmcCfg;
     });
-    // 创建骨架屏窗口
+    // Create skeleton window
     createSkeletonWindow()
     if (global.vmcCfg.receive.enable) startVMCReceiver(global.vmcCfg);
-    // 启动后端服务（现在会自动查找可用端口）
+    // Start backend service (now auto-finds available port)
     await startBackend()
     ipcMain.handle('get-backend-logs', () => {
       return logBuffer.join('\n');
     });
-    // 等待后端服务准备就绪
+    // Wait for backend service to be ready
     await waitForBackend()
-    
-    // 后端服务准备就绪后，加载完整内容
+
+    // After backend service is ready, load full content
     console.log(`Backend server is running at http://${HOST}:${PORT}`)
 
     if (IS_INTERNAL_MODE_ACTIVE) {
-        try {
-            // Electron 会将活动端口写入 userData 目录下的 DevToolsActivePort 文件
-            const portFile = path.join(app.getPath('userData'), 'DevToolsActivePort');
-            
-            // 给一点点时间确保文件写入（通常 Ready 时已经有了，为了稳妥可以用个简单的轮询，这里直接读通常没问题）
-            // 如果读取失败，尝试等待 500ms
-            if (!fs.existsSync(portFile)) {
-                await new Promise(r => setTimeout(r, 500));
-            }
-            
-            if (fs.existsSync(portFile)) {
-                const content = fs.readFileSync(portFile, 'utf8');
-                // 文件格式第一行是端口号，第二行是路径
-                const realPort = parseInt(content.split('\n')[0], 10);
-                
-                if (!isNaN(realPort)) {
-                    SESSION_CDP_PORT = realPort;
-                    console.log(`✅ [CDP] 成功获取系统分配内置浏览器调试端口: ${SESSION_CDP_PORT}`);
-                }
-            } else {
-                console.error('❌ [CDP] 未找到 DevToolsActivePort 文件，无法获取端口');
-            }
-        } catch (e) {
-            console.error('❌ [CDP] 读取端口文件失败:', e);
+      try {
+        // Electron writes the active port to the DevToolsActivePort file in the userData directory
+        const portFile = path.join(app.getPath('userData'), 'DevToolsActivePort');
+
+        // Give a little time to ensure the file is written (usually it exists when Ready, a simple poll is safe but direct read is usually fine)
+        // If read fails, try waiting 500ms
+        if (!fs.existsSync(portFile)) {
+          await new Promise(r => setTimeout(r, 500));
         }
+
+        if (fs.existsSync(portFile)) {
+          const content = fs.readFileSync(portFile, 'utf8');
+          // File format: first line is port number, second line is path
+          const realPort = parseInt(content.split('\n')[0], 10);
+
+          if (!isNaN(realPort)) {
+            SESSION_CDP_PORT = realPort;
+            console.log(`✅ [CDP] Successfully obtained system-allocated built-in browser debug port: ${SESSION_CDP_PORT}`);
+          }
+        } else {
+          console.error('❌ [CDP] DevToolsActivePort file not found, unable to get port');
+        }
+      } catch (e) {
+        console.error('❌ [CDP] Failed to read port file:', e);
+      }
     }
 
     ipcMain.handle('get-app-path', () => {
       return app.getAppPath();
     });
 
-    // 1. 获取 CDP 状态 (前端初始化用)
+    // 1. Get CDP status (for frontend initialization)
     ipcMain.handle('get-internal-cdp-info', () => {
       return {
         active: IS_INTERNAL_MODE_ACTIVE,
@@ -868,14 +908,14 @@ app.whenReady().then(async () => {
       };
     });
 
-    // 3. 处理 Chrome 配置保存 (也是调用 saveEnvVariable)
-    // 前端传来的 settings 是一个对象，saveEnvVariable 现在能处理它了
+    // 3. Handle Chrome config save (also calls saveEnvVariable)
+    // The settings from frontend is an object, saveEnvVariable can now handle it
     ipcMain.handle('save-chrome-config', async (event, settings) => {
       saveEnvVariable('chromeMCPSettings', settings);
       return true;
     });
 
-    // 添加获取端口信息的 IPC 处理
+    // Add IPC handler for getting port info
     ipcMain.handle('get-server-info', () => {
       return {
         port: PORT,
@@ -887,39 +927,39 @@ app.whenReady().then(async () => {
     ipcMain.handle('set-env', async (event, arg) => {
       saveEnvVariable(arg.key, arg.value);
     });
-    //重启应用
+    // Restart app
     ipcMain.handle('restart-app', () => {
       app.relaunch();
       app.exit();
     })
 
     ipcMain.handle('save-screenshot-direct', async (event, { buffer }) => {
-      // 1. 确定保存路径: userData/uploaded_files
-      // 确保这个路径和 Python 后端挂载的静态目录一致
-      const uploadDir = path.join(app.getPath('userData'),'Super-Agent-Party', 'uploaded_files');
-      
-      // 2. 确保目录存在
+      // 1. Determine save path: userData/uploaded_files
+      // Ensure this path matches the static directory mounted by Python backend
+      const uploadDir = path.join(app.getPath('userData'), 'Super-Agent-Party', 'uploaded_files');
+
+      // 2. Ensure directory exists
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
 
-      // 3. 生成文件名
+      // 3. Generate filename
       const filename = `screenshot-${Date.now()}-${Math.random().toString(36).substr(2, 6)}.jpg`;
       const filePath = path.join(uploadDir, filename);
 
-      // 4. 写入文件
+      // 4. Write file
       fs.writeFileSync(filePath, Buffer.from(buffer));
-      
-      // 5. 只返回文件名，由前端拼接 URL
+
+      // 5. Only return filename, let frontend construct URL
       return filename;
     });
 
-    // 在 main.js 的 app.whenReady().then(async () => { 中添加以下代码
+    // Add the following code in main.js's app.whenReady().then(async () => {
 
     ipcMain.handle('open-extension-window', async (_, { url, extension }) => {
       const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-      
-      // 根据扩展配置决定窗口属性
+
+      // Determine window properties based on extension configuration
       const windowConfig = {
         width: extension.width || 800,
         height: extension.height || 600,
@@ -934,7 +974,7 @@ app.whenReady().then(async () => {
         }
       };
 
-      // 如果扩展需要透明和无边框
+      // If extension needs transparency and no border
       if (extension.transparent) {
         Object.assign(windowConfig, {
           frame: false,
@@ -945,7 +985,7 @@ app.whenReady().then(async () => {
           backgroundColor: 'rgba(0, 0, 0, 0)',
         });
       } else {
-        // 普通窗口配置
+        // Normal window configuration
         Object.assign(windowConfig, {
           frame: true,
           transparent: false,
@@ -955,57 +995,57 @@ app.whenReady().then(async () => {
       }
 
       const extensionWindow = new BrowserWindow(windowConfig);
-      
-      // 启用远程模块
+
+      // Enable remote module
       remoteMain.enable(extensionWindow.webContents);
-      
-      // 加载URL
+
+      // Load URL
       await extensionWindow.loadURL(url);
-      
-      // 如果是透明窗口，设置一些特殊行为
+
+      // If transparent window, set some special behavior
       if (extension.transparent) {
-        // 可以根据需要设置鼠标穿透等行为
+        // Can set mouse penetration etc. as needed
         // extensionWindow.setIgnoreMouseEvents(false);
       }
-      
+
       return extensionWindow.id;
     });
 
 
-ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFilePaths }) => {
-  try {
-    if (!fs.existsSync(targetDirPath)) {
-      return { success: false, error: '目标路径不存在' };
-    }
+    ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFilePaths }) => {
+      try {
+        if (!fs.existsSync(targetDirPath)) {
+          return { success: false, error: 'Target path does not exist' };
+        }
 
-    for (const source of sourceFilePaths) {
-      const fileName = path.basename(source);
-      const destPath = path.join(targetDirPath, fileName);
-      
-      // 原生同步拷贝（不支持直接拷贝整个文件夹，仅支持文件）
-      fs.copyFileSync(source, destPath);
-    }
-    return { success: true };
-  } catch (error) {
-    console.error('上传失败:', error);
-    return { success: false, error: error.message };
-  }
-});
+        for (const source of sourceFilePaths) {
+          const fileName = path.basename(source);
+          const destPath = path.join(targetDirPath, fileName);
+
+          // Native synchronous copy (doesn't support copying entire folders, only files)
+          fs.copyFileSync(source, destPath);
+        }
+        return { success: true };
+      } catch (error) {
+        console.error('Upload failed:', error);
+        return { success: false, error: error.message };
+      }
+    });
 
     ipcMain.handle('start-vrm-window', async (_, windowConfig = {}) => {
       const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-      // 使用传入的配置或默认值
+      // Use passed configuration or default values
       const windowWidth = windowConfig.width || 540;
       const windowHeight = windowConfig.height || 960;
 
       const x = windowConfig.x !== undefined ? windowConfig.x : width - windowWidth - 40;
-      // 修复：当屏幕高度小于窗口高度时，避免y坐标为负数
+      // Fix: when screen height is less than window height, avoid negative y coordinate
       let defaultY;
       if (height >= windowHeight) {
-        defaultY = height - windowHeight; // 屏幕够高时，放在底部
+        defaultY = height - windowHeight; // When screen is tall enough, place at bottom
       } else {
-        defaultY = 0; // 屏幕不够高时，放在顶部，避免窗口超出屏幕
+        defaultY = 0; // When screen is not tall enough, place at top to avoid window going off screen
       }
       const y = windowConfig.y !== undefined ? windowConfig.y : defaultY;
 
@@ -1034,52 +1074,52 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
         }
       });
 
-      // 加载页面
+      // Load page
       await vrmWindow.loadURL(`http://${HOST}:${PORT}/vrm.html`);
-      // 默认设置（不穿透，可以交互）
+      // Default settings (no penetration, interactive)
       vrmWindow.setIgnoreMouseEvents(false);
       vrmWindow.setAlwaysOnTop(true);
-      // 保存窗口引用
+      // Save window reference
       vrmWindows.push(vrmWindow);
 
-      // 窗口关闭处理
+      // Window close handling
       vrmWindow.on('closed', () => {
         vrmWindows = vrmWindows.filter(w => w !== vrmWindow);
       });
 
-      return vrmWindow.id;  // 可选：返回窗口 ID 用于后续操作
+      return vrmWindow.id;  // Optional: return window ID for subsequent operations
     });
-    // 👈 桌面截图
+    // 👈 Desktop screenshot
     ipcMain.handle('capture-desktop', async () => {
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
-        thumbnailSize: { width: 1920, height: 1080 } // 可按需改
+        thumbnailSize: { width: 1920, height: 1080 } // Adjust as needed
       })
-      if (!sources.length) throw new Error('无法获取屏幕源')
-      const pngBuffer = sources[0].thumbnail.toPNG() // 返回原生 Buffer
-      return pngBuffer // 给渲染进程
+      if (!sources.length) throw new Error('Unable to get screen source')
+      const pngBuffer = sources[0].thumbnail.toPNG() // Return native Buffer
+      return pngBuffer // To render process
     })
 
     ipcMain.handle('crop-desktop', async (e, { rect }) => {
-      const png = await cropDesktop(rect)          // 不管是 sharp 还是 nativeImage
+      const png = await cropDesktop(rect)          // Whether sharp or nativeImage
       return png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength)
     })
 
     ipcMain.handle('show-screenshot-overlay', async (_, { hideWindow = true } = {}) => {
-      // 1. 根据 hideWindow 参数决定是否隐藏主窗口
+      // 1. Decide whether to hide main window based on hideWindow parameter
       if (hideWindow) {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide()
       }
 
-      // 2. 创建全屏无框透明窗口
+      // 2. Create fullscreen borderless transparent window
       const { width, height } = screen.getPrimaryDisplay().bounds
       shotOverlay = new BrowserWindow({
         x: 0, y: 0, width, height,
-        frame: false, 
-        transparent: true, 
+        frame: false,
+        transparent: true,
         alwaysOnTop: true,
-        skipTaskbar: true, 
-        resizable: false, 
+        skipTaskbar: true,
+        resizable: false,
         movable: false,
         enableLargerThanScreen: true,
         webPreferences: {
@@ -1087,7 +1127,7 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
           preload: path.join(__dirname, 'static/js/shotPreload.js')
         }
       })
-      
+
       shotOverlay.setIgnoreMouseEvents(false)
       shotOverlay.loadFile(path.join(__dirname, 'static/shotOverlay.html'))
       shotOverlay.setVisibleOnAllWorkspaces(true)
@@ -1109,10 +1149,10 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
     })
 
 
-    // 添加IPC处理器
+    // Add IPC handler
     ipcMain.handle('set-ignore-mouse-events', (event, ignore, options) => {
-        const win = BrowserWindow.fromWebContents(event.sender);
-        win.setIgnoreMouseEvents(ignore, options);
+      const win = BrowserWindow.fromWebContents(event.sender);
+      win.setIgnoreMouseEvents(ignore, options);
     });
     ipcMain.handle('dialog:openDirectory', async () => {
       const { dialog } = require('electron');
@@ -1121,10 +1161,10 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
       });
       return result;
     });
-    // 添加新的IPC处理器
+    // Add new IPC handler
     ipcMain.handle('get-ignore-mouse-status', (event) => {
-        const win = BrowserWindow.fromWebContents(event.sender);
-        return win.isIgnoreMouseEvents();
+      const win = BrowserWindow.fromWebContents(event.sender);
+      return win.isIgnoreMouseEvents();
     });
     ipcMain.handle('stop-vrm-window', (_, windowId) => {
       if (windowId !== undefined) {
@@ -1134,7 +1174,7 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
         }
         vrmWindows = vrmWindows.filter(w => w.id !== windowId);
       } else {
-        // 关闭所有窗口
+        // Close all windows
         vrmWindows.forEach(win => {
           if (!win.isDestroyed()) {
             win.close();
@@ -1143,10 +1183,10 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
         vrmWindows = [];
       }
     });
-    // 统一处理下载
+    // Unified download handling
     ipcMain.handle('download-file', async (event, payload) => {
 
-      const { url, filename } = payload;   // 这里再解构即可
+      const { url, filename } = payload;   // Destructure here
       const dlItem = await download(mainWindow, url, {
         filename,
         saveAs: true,
@@ -1154,15 +1194,17 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
       });
       return { success: true, savePath: dlItem.getSavePath() };
     });
-    // 检查更新IPC
+    // Check update IPC
     ipcMain.handle('check-for-updates', async () => {
       if (isDev) {
         console.log('Auto updates are disabled in development mode.')
         return { updateAvailable: false }
       }
       try {
-        const result = await autoUpdater.checkForUpdates()
-        // 只返回必要的可序列化数据
+        const au = getAutoUpdater();
+        if (!au) return { updateAvailable: false };
+        const result = await au.checkForUpdates()
+        // Only return necessary serializable data
         return {
           updateAvailable: updateAvailable,
           updateInfo: result ? {
@@ -1171,31 +1213,33 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
           } : null
         }
       } catch (error) {
-        console.error('检查更新出错:', error)
-        return { 
-          updateAvailable: false, 
-          error: error.message 
+        console.error('Update check error:', error)
+        return {
+          updateAvailable: false,
+          error: error.message
         }
       }
     })
 
-    // 下载更新IPC
+    // Download update IPC
     ipcMain.handle('download-update', () => {
       if (updateAvailable) {
-        return autoUpdater.downloadUpdate()
+        const au = getAutoUpdater();
+        return au ? au.downloadUpdate() : null;
       }
     })
 
-    // 安装更新IPC
+    // Install update IPC
     ipcMain.handle('quit-and-install', () => {
-      setTimeout(() => autoUpdater.quitAndInstall(), 500);
+      const au = getAutoUpdater();
+      if (au) setTimeout(() => au.quitAndInstall(), 500);
     });
-            
-    // 加载主页面
+
+    // Load main page
     await mainWindow.loadURL(`http://${HOST}:${PORT}`)
     ipcMain.on('set-language', (_, lang) => {
       if (lang === 'auto') {
-        // 获取系统设置，默认是'en-US'，如果系统语言是中文，则设置为'zh-CN'
+        // Get system settings, default is 'en-US', if system language is Chinese, set to 'zh-CN'
         const systemLang = app.getLocale().split('-')[0];
         lang = systemLang === 'zh' ? 'zh-CN' : 'en-US';
       }
@@ -1203,10 +1247,10 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
       updateTrayMenu();
       updatecontextMenu();
     });
-    // 创建系统托盘
+    // Create system tray
     createTray();
     updatecontextMenu();
-    // ★ 下面这段就是你要放的「主进程 IPC + 默认配置」
+    // ★ This is the main process IPC + default configuration you need to place
     ipcMain.handle('set-vmc-config', async (_, cfg) => {
       if (cfg.receive.enable) {
         if (!vmcReceiverActive || cfg.receive.port !== global.vmcCfg?.receive.port) {
@@ -1230,7 +1274,7 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
       const { bones, blends } = frameData;
       const packets = [];
 
-      // 1. 发送 Root (保持之前修正后的归零逻辑)
+      // 1. Send Root (keep the corrected zeroing logic from before)
       packets.push({
         address: '/VMC/Ext/Root/Pos',
         args: [
@@ -1240,19 +1284,19 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
         ]
       });
 
-      // 2. 发送骨骼 (★ 核心修复在这里)
+      // 2. Send bones (★ core fix is here)
       bones.forEach(b => {
         if (b.name === 'root') return;
 
-        // ★ Warudo 强制要求 PascalCase (大驼峰)
-        // Three.js 是 "hips", Warudo 要 "Hips"
-        // Three.js 是 "leftUpperArm", Warudo 要 "LeftUpperArm"
+        // ★ Warudo requires PascalCase (capitalized camelCase)
+        // Three.js has "hips", Warudo needs "Hips"
+        // Three.js has "leftUpperArm", Warudo needs "LeftUpperArm"
         const vmcName = b.name.charAt(0).toUpperCase() + b.name.slice(1);
 
         packets.push({
           address: '/VMC/Ext/Bone/Pos',
           args: [
-            { type: 's', value: vmcName },  // <--- 这里用转换后的大写名字
+            { type: 's', value: vmcName },  // <--- Use the converted capitalized name here
             { type: 'f', value: b.pos.x },
             { type: 'f', value: b.pos.y },
             { type: 'f', value: b.pos.z },
@@ -1264,9 +1308,9 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
         });
       });
 
-      // 3. 发送表情 (BlendShape 名字通常也需要对应)
+      // 3. Send expressions (BlendShape names usually also need to match)
       blends.forEach(blend => {
-        // 表情名字我们在 vrm.js 里已经通过映射表转过了(Joy, A, I...), 这里直接用
+        // Expression names were already converted via mapping table in vrm.js (Joy, A, I...), use directly here
         packets.push({
           address: '/VMC/Ext/Blend/Val',
           args: [
@@ -1281,25 +1325,25 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
         packets.push({ address: '/VMC/Ext/Blend/Apply', args: [] });
       }
 
-      // 5. OK (Warudo 必须)
-      packets.push({ 
-        address: '/VMC/Ext/OK', 
-        args: [{ type: 'i', value: 1 }] 
+      // 5. OK (Warudo requires this)
+      packets.push({
+        address: '/VMC/Ext/OK',
+        args: [{ type: 'i', value: 1 }]
       });
 
-      // ... 发送逻辑保持不变 ...
+      // ... Send logic unchanged ...
       try {
         const bundleBuffer = osc.writePacket({
           timeTag: osc.timeTag(0),
           packets: packets
         });
         vmcSendSocket.send(bundleBuffer, port, host, (err) => {
-            if (err) console.error(err);
+          if (err) console.error(err);
         });
       } catch (e) { console.error(e); }
     });
 
-    // 窗口控制事件
+    // Window control events
     ipcMain.handle('window-action', (_, action) => {
       switch (action) {
         case 'show':
@@ -1323,34 +1367,34 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
       const win = BrowserWindow.fromWebContents(event.sender);
 
       if (win.isMaximized()) {
-        // 1. 开始还原
+        // 1. Start restoring
         win.unmaximize();
 
-        if (isMac){
-          // 2. 等到连续 50 ms 内尺寸不再变化，才算“真正还原完成”
+        if (isMac) {
+          // 2. Wait until size stops changing for 50ms continuously to consider 'truly restored'
           let last = win.getNormalBounds();
-          for (let i = 0; i < 10; i++) {          // 最多 500 ms
+          for (let i = 0; i < 10; i++) {          // Max 500 ms
             await new Promise(r => setTimeout(r, 50));
             const curr = win.getNormalBounds();
             if (curr.width === last.width && curr.height === last.height) break;
             last = curr;
           }
-        }else {
-          // 2. 等窗口“彻底”变成普通状态
-          for (let i = 0; i < 20; i++) {          // 最多 1 s
+        } else {
+          // 2. Wait for window to 'fully' return to normal state
+          for (let i = 0; i < 20; i++) {          // Max 1 s
             await new Promise(r => setTimeout(r, 50));
-            if (!win.isMaximized()) break;        // 真正退出后即可跳出
+            if (!win.isMaximized()) break;        // Can exit once truly exited
           }
         }
 
 
-        // 3. 现在再改助手尺寸，系统不会再覆盖
+        // 3. Now change assistant size, system won't override it
         win.setSize(width, height, true);
       } else {
         if (isMac) {
-            win.maximize();
-        }else{
-            win.setSize(width, height, true);
+          win.maximize();
+        } else {
+          win.setSize(width, height, true);
         }
       }
     });
@@ -1359,15 +1403,15 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
       const win = BrowserWindow.fromWebContents(e.sender);
       win.setAlwaysOnTop(flag, 'screen-saver');
     });
-    // 窗口状态同步
+    // Window state sync
     mainWindow.on('maximize', () => {
       mainWindow.webContents.send('window-state', 'maximized')
     })
     mainWindow.on('unmaximize', () => {
       mainWindow.webContents.send('window-state', 'normal')
     })
-    
-    // 窗口关闭事件处理 - 最小化到托盘而不是退出
+
+    // Window close event handling - minimize to tray instead of exit
     mainWindow.on('close', (event) => {
       if (!app.isQuitting) {
         event.preventDefault()
@@ -1381,42 +1425,42 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
       mainWindow.webContents.send('window-resized', size);
     });
 
-    // ★ 新增：增强型复制函数（同时支持粘贴为图片和粘贴为文件）
+    // ★ New: Enhanced copy function (supports both paste as image and paste as file)
     function copyImageToClipboardWithFile(image) {
       try {
-        // 1. 保存图片到临时目录
+        // 1. Save image to temp directory
         const tempDir = os.tmpdir();
-        // 生成带时间戳的文件名，避免冲突
+        // Generate timestamped filename to avoid conflicts
         const fileName = `image_${Date.now()}.png`;
         const filePath = path.join(tempDir, fileName);
-        
-        // 将 nativeImage 转换为 buffer 并写入磁盘
+
+        // Convert nativeImage to buffer and write to disk
         const buffer = image.toPNG();
         fs.writeFileSync(filePath, buffer);
 
-        // 2. 准备剪贴板数据对象
+        // 2. Prepare clipboard data object
         const clipboardData = {
-          image: image, // 写入位图数据 (用于粘贴到聊天框/PS)
+          image: image, // Write bitmap data (for pasting into chat/PS)
         };
 
-        // 3. 根据系统添加文件路径数据 (用于粘贴到文件夹)
+        // 3. Add file path data based on system (for pasting into folders)
         if (process.platform === 'win32') {
           // --- Windows (CF_HDROP) ---
-          // 构造 DROPFILES 结构体
-          // 结构: offset(4) + pt(8) + fNC(4) + fWide(4) + path(UTF16) + double-null
+          // Construct DROPFILES structure
+          // Structure: offset(4) + pt(8) + fNC(4) + fWide(4) + path(UTF16) + double-null
           const pathBuffer = Buffer.from(filePath, 'ucs2');
           const dropFiles = Buffer.alloc(20 + pathBuffer.length + 4);
-          
+
           dropFiles.writeUInt32LE(20, 0); // pFiles (offset)
           dropFiles.writeUInt32LE(1, 16); // fWide (Unicode flag)
-          pathBuffer.copy(dropFiles, 20); // 写入路径
-          dropFiles.writeUInt32LE(0, 20 + pathBuffer.length); // 结尾的双 null
+          pathBuffer.copy(dropFiles, 20); // Write path
+          dropFiles.writeUInt32LE(0, 20 + pathBuffer.length); // Trailing double null
 
           clipboardData['CF_HDROP'] = dropFiles;
-          
+
         } else if (process.platform === 'darwin') {
           // --- macOS (NSFilenamesPboardType) ---
-          // 写入 Property List XML
+          // Write Property List XML
           const plist = `
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1428,30 +1472,30 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
           `;
           clipboardData['NSFilenamesPboardType'] = plist;
         }
-        // Linux 通常支持 text/uri-list，这里暂从略，如有需要可补充
+        // Linux usually supports text/uri-list, omitted here for brevity, can be added if needed
 
-        // 4. 一次性写入所有格式
+        // 4. Write all formats at once
         clipboard.write(clipboardData);
-        
-        console.log(`已复制图片及文件路径: ${filePath}`);
+
+        console.log(`Copied image and file path: ${filePath}`);
 
       } catch (err) {
-        console.error('增强复制失败，回退到普通复制:', err);
-        // 如果出错，至少尝试写入纯图片
+        console.error('Enhanced copy failed, falling back to normal copy:', err);
+        // If error, at least try to write pure image
         clipboard.writeImage(image);
       }
     }
 
-    // 修改 show-context-menu 的 IPC 处理
+    // Modified show-context-menu IPC handling
 
     ipcMain.handle('show-context-menu', async (event, { menuType, data }) => {
       let menuTemplate = [];
       const win = BrowserWindow.fromWebContents(event.sender);
-      
-      // 直接使用 locales[currentLanguage]
-      const lang = locales[currentLanguage]; 
 
-      // --- A. 图片菜单 ---
+      // Directly use locales[currentLanguage]
+      const lang = locales[currentLanguage];
+
+      // --- A. Image menu ---
       if (menuType === 'image') {
         menuTemplate = [
           {
@@ -1483,7 +1527,7 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
                   clipboard.writeImage(image);
                 }
               } catch (error) {
-                console.error('复制图片失败:', error);
+                console.error('Copy image failed:', error);
               }
             }
           },
@@ -1523,14 +1567,14 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
                   fs.writeFileSync(filePath, buffer);
                 }
               } catch (error) {
-                console.error('图片另存为失败:', error);
-                dialog.showErrorBox('保存失败', '无法保存该图片: ' + error.message);
+                console.error('Save image as failed:', error);
+                dialog.showErrorBox('Save Failed', 'Unable to save this image: ' + error.message);
               }
             }
           }
         ];
-      } 
-      // --- B. 链接菜单 ---
+      }
+      // --- B. Link menu ---
       else if (menuType === 'link') {
         menuTemplate = [
           {
@@ -1550,21 +1594,21 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
           }
         ];
       }
-      // --- C. 纯文本/选区菜单 ---
+      // --- C. Plain text/selection menu ---
       else if (menuType === 'text') {
         menuTemplate = [
           { label: lang.copy, role: 'copy' },
-          { 
+          {
             label: `Search "${data.text.length > 15 ? data.text.slice(0, 15) + '...' : data.text}"`,
             click: () => {
-               win.webContents.send('trigger-search', `Search "${data.text}"`);
-            } 
+              win.webContents.send('trigger-search', `Search "${data.text}"`);
+            }
           },
           { type: 'separator' },
           { label: lang.selectAll, role: 'selectAll' }
         ];
       }
-      // --- D. 默认/空白处菜单 ---
+      // --- D. Default/blank area menu ---
       else {
         menuTemplate = [
           { label: lang.cut, role: 'cut' },
@@ -1575,7 +1619,7 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
         ];
       }
 
-      // --- E. 开发模式下添加检查元素 ---
+      // --- E. Add inspect element in dev mode ---
       if (isDev) {
         menuTemplate.push({ type: 'separator' });
         menuTemplate.push({
@@ -1590,20 +1634,20 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
       menu.popup({ window: win });
     });
 
-    // 监听关闭事件
+    // Listen for close events
     ipcMain.handle('request-stop-qqbot', async (event) => {
-      const win = BrowserWindow.getAllWindows()[0]; // 获取主窗口
+      const win = BrowserWindow.getAllWindows()[0]; // Get main window
       if (win && !win.isDestroyed()) {
-        // 通过webContents执行渲染进程方法
+        // Execute render process method via webContents
         await win.webContents.executeJavaScript(`
           window.stopQQBotHandler && window.stopQQBotHandler()
         `);
       }
     });
     ipcMain.handle('request-stop-feishubot', async (event) => {
-      const win = BrowserWindow.getAllWindows()[0]; // 获取主窗口
+      const win = BrowserWindow.getAllWindows()[0]; // Get main window
       if (win && !win.isDestroyed()) {
-        // 通过webContents执行渲染进程方法
+        // Execute render process method via webContents
         await win.webContents.executeJavaScript(`
           window.stopFeishuBotHandler && window.stopFeishuBotHandler()
         `);
@@ -1612,25 +1656,25 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
     ipcMain.handle('request-stop-dingtalk', async (event) => {
       const win = BrowserWindow.getAllWindows()[0];
       if (win && !win.isDestroyed()) {
-        // 执行渲染进程(Vue)中挂载的清理方法
+        // Execute cleanup method mounted in render process (Vue)
         await win.webContents.executeJavaScript(`
           window.stopDingtalkBotHandler && window.stopDingtalkBotHandler()
         `);
       }
     });
     ipcMain.handle('request-stop-telegrambot', async (event) => {
-      const win = BrowserWindow.getAllWindows()[0]; // 获取主窗口
+      const win = BrowserWindow.getAllWindows()[0]; // Get main window
       if (win && !win.isDestroyed()) {
-        // 通过webContents执行渲染进程方法
+        // Execute render process method via webContents
         await win.webContents.executeJavaScript(`
           window.stopTelegramBotHandler && window.stopTelegramBotHandler()
         `);
       }
     });
     ipcMain.handle('request-stop-discordbot', async (event) => {
-      const win = BrowserWindow.getAllWindows()[0]; // 获取主窗口
+      const win = BrowserWindow.getAllWindows()[0]; // Get main window
       if (win && !win.isDestroyed()) {
-        // 通过webContents执行渲染进程方法
+        // Execute render process method via webContents
         await win.webContents.executeJavaScript(`
           window.stopDiscordBotHandler && window.stopDiscordBotHandler()
         `);
@@ -1652,7 +1696,7 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
         });
       });
     });
-    // 其他IPC处理...
+    // Other IPC handlers...
     ipcMain.on('open-external', (event, url) => {
       shell.openExternal(url)
         .then(() => console.log(`Opened ${url} in the default browser.`))
@@ -1661,7 +1705,7 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
     ipcMain.handle('readFile', async (_, path) => {
       return fs.promises.readFile(path);
     });
-    // 文件对话框处理器
+    // File dialog handler
     ipcMain.handle('open-file-dialog', async (options) => {
       const allAllowed = [...ALLOWED_EXTENSIONS, ...ALLOWED_IMAGE_EXTENSIONS, ...ALLOWED_VIDEO_EXTENSIONS];
       const result = await dialog.showOpenDialog({
@@ -1681,7 +1725,7 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
           { name: locales[currentLanguage].allFiles, extensions: ['*'] }
         ]
       })
-      // 返回包含文件名和路径的对象数组
+      // Return array of objects containing filename and path
       return result
     });
     ipcMain.handle('check-path-exists', (_, path) => {
@@ -1689,11 +1733,11 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
     })
 
   } catch (err) {
-    console.error('启动失败:', err)
+    console.error('Startup failed:', err)
     if (loadingWindow && !loadingWindow.isDestroyed()) {
       loadingWindow.close()
     }
-    dialog.showErrorBox('启动失败', `服务启动失败: ${err.message}`)
+    dialog.showErrorBox('Startup Failed', `Service failed to start: ${err.message}`)
     app.quit()
   }
 
@@ -1701,29 +1745,29 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
   let currentGlobalKey = null;
 
   ipcMain.handle('register-global-shortcut', (event, key) => {
-    // 如果之前有注册过的，先注销
+    // If previously registered, unregister first
     if (currentGlobalKey) {
       globalShortcut.unregister(currentGlobalKey);
     }
     try {
-      // 注册新的快捷键
+      // Register new shortcut
       const success = globalShortcut.register(key, () => {
-        // 当全局快捷键被按下时，通知主窗口前端
+        // When global shortcut is pressed, notify main window frontend
         BrowserWindow.getAllWindows().forEach(w => {
           if (!w.isDestroyed()) w.webContents.send('global-shortcut-triggered');
         });
       });
-      
+
       if (success) {
         currentGlobalKey = key;
-        console.log(`[ASR] 全局快捷键 ${key} 注册成功`);
+        console.log(`[ASR] Global shortcut ${key} registered successfully`);
         return true;
       } else {
-        console.warn(`[ASR] 全局快捷键 ${key} 注册失败，可能被系统或其他软件占用`);
+        console.warn(`[ASR] Global shortcut ${key} registration failed, possibly occupied by system or other software`);
         return false;
       }
     } catch (e) {
-      console.error('[ASR] 全局快捷键异常:', e);
+      console.error('[ASR] Global shortcut error:', e);
       return false;
     }
   });
@@ -1736,47 +1780,47 @@ ipcMain.handle('upload-to-workspace', async (event, { targetDirPath, sourceFileP
     return true;
   });
 
-// ================= [新增：工作区文件树后台逻辑] =================
-    // 1. 读取目录内容 (懒加载)
-    ipcMain.handle('read-directory', async (event, dirPath) => {
-      try {
-        if (!fs.existsSync(dirPath)) {
-          return { success: false, error: 'Directory does not exist' };
+  // ================= [New: Workspace file tree background logic] =================
+  // 1. Read directory contents (lazy loading)
+  ipcMain.handle('read-directory', async (event, dirPath) => {
+    try {
+      if (!fs.existsSync(dirPath)) {
+        return { success: false, error: 'Directory does not exist' };
+      }
+      const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+
+      const result = items.map(item => ({
+        name: item.name,
+        path: path.join(dirPath, item.name),
+        isDirectory: item.isDirectory()
+      }));
+
+      // Sort rule: folders first, then alphabetical order
+      result.sort((a, b) => {
+        if (a.isDirectory === b.isDirectory) {
+          return a.name.localeCompare(b.name);
         }
-        const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
-        
-        const result = items.map(item => ({
-          name: item.name,
-          path: path.join(dirPath, item.name),
-          isDirectory: item.isDirectory()
-        }));
+        return a.isDirectory ? -1 : 1;
+      });
 
-        // 排序规则：文件夹排在前面，按字母顺序排列
-        result.sort((a, b) => {
-          if (a.isDirectory === b.isDirectory) {
-            return a.name.localeCompare(b.name);
-          }
-          return a.isDirectory ? -1 : 1;
-        });
+      return { success: true, data: result };
+    } catch (error) {
+      console.error('Failed to read directory:', error);
+      return { success: false, error: error.message };
+    }
+  });
 
-        return { success: true, data: result };
-      } catch (error) {
-        console.error('读取目录失败:', error);
-        return { success: false, error: error.message };
-      }
-    });
-
-    // 2. 删除文件或文件夹 (移动到回收站以保安全)
-    ipcMain.handle('delete-workspace-file', async (event, filePath) => {
-      try {
-        await shell.trashItem(filePath); // 移动到系统回收站，比 fs.rm 更安全
-        return { success: true };
-      } catch (error) {
-        console.error('删除文件失败:', error);
-        return { success: false, error: error.message };
-      }
-    });
-    // ==============================================================
+  // 2. Delete file or folder (move to recycle bin for safety)
+  ipcMain.handle('delete-workspace-file', async (event, filePath) => {
+    try {
+      await shell.trashItem(filePath); // Move to system recycle bin, safer than fs.rm
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  // ==============================================================
 
 })
 
@@ -1784,21 +1828,21 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 });
 
-// 应用退出处理
+// App quit handling
 app.on('before-quit', async (event) => {
-  // 防止重复处理退出事件
+  // Prevent duplicate processing of quit events
   if (isQuitting) return;
-  
-  // 标记退出状态并阻止默认退出行为 (以便我们执行异步操作)
+
+  // Mark quit status and prevent default quit behavior (to allow async operations)
   isQuitting = true;
   event.preventDefault();
-  
-  console.log('正在准备退出应用...');
+
+  console.log('Preparing to quit application...');
 
   try {
     const mainWindow = BrowserWindow.getAllWindows()[0];
-    
-    // 1. 停止前端的机器人 (保留你原有的逻辑)
+
+    // 1. Stop frontend bots (keep your original logic)
     if (mainWindow && !mainWindow.isDestroyed()) {
       await mainWindow.webContents.executeJavaScript(`
         if (window.stopQQBotHandler) window.stopQQBotHandler();
@@ -1808,36 +1852,36 @@ app.on('before-quit', async (event) => {
         if (window.stopTelegramBotHandler) window.stopTelegramBotHandler();
         if (window.stopSlackBotHandler) window.stopSlackBotHandler();
       `);
-      // 给前端一点时间清理
+      // Give frontend some time to clean up
       await new Promise(resolve => setTimeout(resolve, 500));
     }
-    
-    // 2. ★★★ 新增：通知 Python 后端优雅退出 ★★★
-    // 只要 PORT 存在，就尝试发送 HTTP 请求
+
+    // 2. ★★★ New: Notify Python backend to gracefully shutdown ★★★
+    // As long as PORT exists, try to send HTTP request
     if (PORT && backendProcess) {
       try {
-        console.log('通知后端执行优雅关闭...');
+        console.log('Notifying backend to gracefully shutdown...');
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2秒超时
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
 
-        await fetch(`http://${HOST}:${PORT}/sys/shutdown`, { 
+        await fetch(`http://${HOST}:${PORT}/sys/shutdown`, {
           method: 'POST',
           signal: controller.signal
         });
         clearTimeout(timeoutId);
 
-        // 给 Python 1.5 秒的时间去执行 lifespan 中的 node_mgr.stop()
-        console.log('等待后端清理资源...');
+        // Give Python 1.5 seconds to execute node_mgr.stop() in lifespan
+        console.log('Waiting for backend to clean up resources...');
         await new Promise(resolve => setTimeout(resolve, 1500));
       } catch (err) {
-        console.log('后端优雅关闭请求失败或超时 (可能后端已关闭):', err.message);
+        console.log('Backend graceful shutdown request failed or timed out (backend may already be closed):', err.message);
       }
     }
 
-    // 3. 最后的补刀 (保留你原有的逻辑，作为保险)
-    // 如果 Python 还没死透，或者出错了，强制杀死它
+    // 3. Final cleanup (keep your original logic as insurance)
+    // If Python is not dead yet, or there was an error, force kill it
     if (backendProcess) {
-      console.log('执行强制进程清理...');
+      console.log('Executing forced process cleanup...');
       if (process.platform === 'win32') {
         spawn('taskkill', ['/pid', backendProcess.pid, '/f', '/t']);
       } else {
@@ -1847,34 +1891,34 @@ app.on('before-quit', async (event) => {
     }
 
   } catch (error) {
-    console.error('退出时发生错误:', error);
+    console.error('Error during quit:', error);
   } finally {
-    // 4. 最终退出 Electron
+    // 4. Final quit Electron
     app.exit(0);
   }
 });
 
 
-// 自动退出处理
+// Auto quit handling
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-// 处理渲染进程崩溃
+// Handle render process crash
 app.on('render-process-gone', (event, webContents, details) => {
-  console.error('渲染进程崩溃:', details)
-  dialog.showErrorBox('应用崩溃', `渲染进程异常: ${details.reason}`)
+  console.error('Render process crashed:', details)
+  dialog.showErrorBox('Application Crashed', `Render process abnormal: ${details.reason}`)
 })
 
-// 处理主进程未捕获异常
+// Handle uncaught exceptions in main process
 process.on('uncaughtException', (err) => {
-  console.error('未捕获异常:', err)
+  console.error('Uncaught exception:', err)
   if (loadingWindow && !loadingWindow.isDestroyed()) {
     loadingWindow.close()
   }
-  dialog.showErrorBox('致命错误', `未捕获异常: ${err.message}`)
+  dialog.showErrorBox('Fatal Error', `Uncaught exception: ${err.message}`)
   app.quit()
 })
 
@@ -1884,9 +1928,9 @@ function createTray() {
     tray = new Tray(iconPath);
     tray.setToolTip('Super Agent Party');
     tray.on('click', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
+      if (mainWindow) {
+        if (mainWindow.isVisible()) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
           mainWindow.focus();
         } else {
           mainWindow.show();
@@ -1916,7 +1960,7 @@ function updateTrayMenu() {
       }
     }
   ])
-  
+
   tray.setContextMenu(contextMenu);
 }
 
@@ -1945,20 +1989,20 @@ function updatecontextMenu() {
 // });
 
 app.on('web-contents-created', (event, contents) => {
-  // 拦截所有新窗口请求（包括 <webview> 内部的 window.open 和 target="_blank"）
+  // Intercept all new window requests (including window.open and target="_blank" inside <webview>)
   contents.setWindowOpenHandler((details) => {
     const { url } = details;
-    
-    // 如果主窗口还在，就通知主窗口里的 Vue 页面去创建新标签
+
+    // If main window is still alive, notify Vue page in main window to create new tab
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('create-tab', url);
     }
-    
-    // 坚决阻止 Electron 创建原生弹窗
+
+    // Firmly prevent Electron from creating native popups
     return { action: 'deny' };
   });
 
-  // (保留你原有的代码：拦截侧键后退等)
+  // (Keep your original code: intercept side buttons back/forward etc.)
   contents.on('input-event', (_ev, input) => {
     if (input.type === 'mouseDown' && (input.button === 3 || input.button === 4)) {
       contents.stopNavigation();
@@ -1973,10 +2017,10 @@ app.on('web-contents-created', (event, contents) => {
 });
 app.commandLine.appendSwitch('disable-http-cache');
 
-// --- [修改后的 3] 协议处理核心函数 & IPC ---
+// --- [Modified 3] Protocol handling core function & IPC ---
 
-// 处理 URL 的逻辑
-// main.js 里的 handleProtocolUrl 关键部分
+// Logic for handling URL
+// Key part of handleProtocolUrl in main.js
 function handleProtocolUrl(url) {
   if (!url) return;
   try {
@@ -1985,21 +2029,21 @@ function handleProtocolUrl(url) {
       const type = urlObj.searchParams.get('type'); // 'mcp'
       const repo = urlObj.searchParams.get('repo');
       const mcpType = urlObj.searchParams.get('mcpType'); // 'stdio' / 'sse'
-      const config = urlObj.searchParams.get('config'); // JSON 字符串
+      const config = urlObj.searchParams.get('config'); // JSON string
 
       if (repo || config) {
         const payload = { type, repo, mcpType, config };
         if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isLoading()) {
-          mainWindow.webContents.send('remote-install-any', payload); 
+          mainWindow.webContents.send('remote-install-any', payload);
         } else {
-          pendingExtensionUrl = url; 
+          pendingExtensionUrl = url;
         }
       }
     }
-  } catch (e) { console.error('协议解析失败:', e); }
+  } catch (e) { console.error('Protocol parse error:', e); }
 }
 
-// 对应的 check-pending-install 也要改
+// Also modify the corresponding check-pending-install
 ipcMain.handle('check-pending-install', () => {
   if (pendingExtensionUrl) {
     try {
@@ -2008,7 +2052,7 @@ ipcMain.handle('check-pending-install', () => {
         type: urlObj.searchParams.get('type'),
         repo: urlObj.searchParams.get('repo'),
         config: urlObj.searchParams.get('config'),
-        mcpType: urlObj.searchParams.get('mcpType') // 新增
+        mcpType: urlObj.searchParams.get('mcpType') // New
       };
       pendingExtensionUrl = null;
       return res;
@@ -2017,7 +2061,7 @@ ipcMain.handle('check-pending-install', () => {
   return null;
 });
 
-// macOS 监听 (Mac 下点击链接触发这里)
+// macOS listener (triggered here when clicking link on Mac)
 app.on('open-url', (event, url) => {
   event.preventDefault();
   handleProtocolUrl(url);

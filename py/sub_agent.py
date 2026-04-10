@@ -6,7 +6,7 @@ from py.task_center import get_task_center, TaskStatus
 from py.get_setting import load_settings, get_port
 
 class SubAgentExecutor:
-    """子智能体执行器"""
+    """Sub-agent executor"""
     
     def __init__(self, workspace_dir: str, settings: Dict):
         self.workspace_dir = workspace_dir
@@ -22,14 +22,14 @@ class SubAgentExecutor:
         consensus_content: Optional[str] = None,
         max_iterations: int = 30
     ) -> Dict[str, Any]:
-        """执行子任务的主循环"""
+        """Main loop for executing a subtask"""
         task_center = await get_task_center(self.workspace_dir)
         task = await task_center.get_task(task_id)
         
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
         
-        # 标记任务开始
+        # Mark task as started
         await task_center.update_task_progress(
             task_id=task_id, progress=0, status=TaskStatus.RUNNING
         )
@@ -41,7 +41,7 @@ class SubAgentExecutor:
         system_prompt = self._build_system_prompt(task, consensus_content)
         conversation_history.append({"role": "system", "content": system_prompt})
         
-        initial_user_msg = f"请执行以下任务：\n\n{task.description}\n\n要求：完成后请整理出最终结果。"
+        initial_user_msg = f"Please execute the following task:\n\n{task.description}\n\nRequirement: Once completed, organize and present the final result."
         conversation_history.append({"role": "user", "content": initial_user_msg})
         
         try:
@@ -51,7 +51,7 @@ class SubAgentExecutor:
                     current_progress = 10 + int((iteration / max_iterations) * 80)
                     print(f"[SubAgent] Task {task_id} - Iteration {iteration}")
                     
-                    # 1. 调用 LLM (流式接收，内部不再传递 flag)
+                    # 1. Call LLM (streaming, no flag passed internally)
                     assistant_response = await self._call_llm_stream_only(
                         http_client=http_client,
                         messages=conversation_history,
@@ -67,10 +67,10 @@ class SubAgentExecutor:
                         "content": assistant_response
                     })
                     
-                    # ⭐⭐⭐ 核心逻辑回归：相信数据库状态 ⭐⭐⭐
-                    
-                    # 2. 重新加载任务状态
-                    # 如果刚才执行了 finish_task，这里读出来的就是 COMPLETED
+                    # ⭐⭐⭐ Core logic: trust database state ⭐⭐⭐
+
+                    # 2. Reload task state
+                    # If finish_task was just called, the status here will be COMPLETED
                     latest_task = await task_center.get_task(task_id)
                     
                     if latest_task.status == TaskStatus.COMPLETED:
@@ -79,11 +79,11 @@ class SubAgentExecutor:
                             "success": True,
                             "task_id": task_id,
                             "result": latest_task.result,
-                            "summary": "任务已完成。",
+                            "summary": "Task completed.",
                             "iterations": iteration
                         }
 
-                    # 3. 只有状态不是 Completed，才继续更新进度和检查隐式完成
+                    # 3. Only if status is not Completed, continue updating progress and check implicit completion
                     await task_center.update_task_progress(
                         task_id=task_id,
                         progress=current_progress,
@@ -91,7 +91,7 @@ class SubAgentExecutor:
                         context={"history": assistant_only_history, "current_iteration": iteration}
                     )
 
-                    # 4. 隐式完成检查 (没调工具，但在对话里说完成了)
+                    # 4. Implicit completion check (no tool called, but conversation indicates completion)
                     is_complete = await self._check_task_completion_smart(
                         task=task,
                         conversation_history=conversation_history,
@@ -100,7 +100,7 @@ class SubAgentExecutor:
                     
                     if is_complete:
                         print(f"⚡ [SubAgent] Implicit completion detected.")
-                        last_response = assistant_response or "任务已完成"
+                        last_response = assistant_response or "Task completed"
                         
                         await task_center.update_task_progress(
                             task_id=task_id,
@@ -119,14 +119,14 @@ class SubAgentExecutor:
                     
                     conversation_history.append({
                         "role": "user",
-                        "content": "请继续执行任务。如果已完成所有步骤，请总结并给出最终结果。"
+                        "content": "Please continue executing the task. If all steps are complete, summarize and provide the final result."
                     })
                 
-                # ... 超时处理保持不变 ...
+                # ... timeout handling unchanged ...
                 return {"success": False, "error": "Max iterations reached"}
 
         except Exception as e:
-            # ... 异常处理保持不变 ...
+            # ... exception handling unchanged ...
             return {"success": False, "error": str(e)}
 
     async def _call_llm_stream_only(
@@ -169,16 +169,16 @@ class SubAgentExecutor:
                             
                             delta = chunk["choices"][0].get("delta", {})
 
-                            # 1. 累积文本
+                            # 1. Accumulate text
                             content = delta.get("content")
                             if content:
                                 full_content += content
                                 current_text_buffer += content
 
-                            # 2. 处理工具
+                            # 2. Handle tools
                             tool_data = delta.get("tool_content")
                             if tool_data and task_center and task_id:
-                                # 刷新缓冲区
+                                # Flush buffer
                                 if current_text_buffer.strip():
                                     display_history.append(current_text_buffer.strip())
                                     current_text_buffer = ""
@@ -186,17 +186,17 @@ class SubAgentExecutor:
                                 tool_type = tool_data.get("type")
                                 tool_title = str(tool_data.get("title", "Unknown")).strip()
                                 
-                                # ⭐⭐⭐ 关键点：如果是 finish_task，不要碰进度条 ⭐⭐⭐
+                                # ⭐⭐⭐ Key point: if finish_task, do NOT touch progress bar ⭐⭐⭐
                                 if "finish_task" in tool_title:
-                                    # finish_task 工具已经在 task_tools.py 里把状态改成 COMPLETED 了
-                                    # 我们千万不能在这里调用 update_task_progress，否则会把状态覆盖回 RUNNING
-                                    
-                                    # 仅记录到显示历史，不写库
+                                    # finish_task already sets status to COMPLETED in task_tools.py
+                                    # We must NOT call update_task_progress here, as it would overwrite back to RUNNING
+
+                                    # Only log to display history, do not write to DB
                                     res_content = tool_data.get("content", "")
                                     display_history.append(f"✅ [{tool_title}]\nResult: {str(res_content)[:100]}...")
                                     continue 
 
-                                # 其他普通工具正常更新进度
+                                # Normal progress updates for other tools
                                 if tool_type in ["tool_result", "error"]:
                                     tool_step_counter += 1
                                     res_content = tool_data.get("content", "")
@@ -207,7 +207,7 @@ class SubAgentExecutor:
                                     
                                     micro_progress = min(base_progress + (tool_step_counter * 2), 99)
                                     
-                                    # 只有非 finish_task 才写入 DB
+                                    # Only write to DB for non-finish_task tools
                                     await task_center.update_task_progress(
                                         task_id=task_id,
                                         progress=micro_progress,
@@ -223,18 +223,18 @@ class SubAgentExecutor:
         if current_text_buffer.strip() and display_history is not None:
             display_history.append(current_text_buffer.strip())
 
-        return full_content if full_content else "(任务执行中...)"
+        return full_content if full_content else "(Task executing...)"
     
-    # ... (其他辅助方法如 _build_system_prompt 等保持不变) ...
+    # ... (other helper methods like _build_system_prompt remain unchanged) ...
     def _build_system_prompt(self, task, consensus_content: Optional[str]) -> str:
-        prompt = f"你是一个专业的任务执行助手。\n【任务信息】ID: {task.task_id} | 标题: {task.title}\n【执行要求】专注完成任务，使用可用工具，完成后明确表示结束。"
-        if consensus_content: prompt += f"\n\n【共识规范】\n{consensus_content}\n"
+        prompt = f"You are a professional task execution assistant.\n【Task Info】ID: {task.task_id} | Title: {task.title}\n【Requirements】Focus on completing the task, use available tools, and clearly indicate when finished."
+        if consensus_content: prompt += f"\n\n【Consensus Spec】\n{consensus_content}\n"
         return prompt
     
     async def _check_task_completion_smart(self, task, conversation_history, http_client) -> bool:
         recent = self._get_recent_conversation(conversation_history)
-        msgs = [{"role": "system", "content": "判断任务是否完成，只回复YES或NO。"},
-                {"role": "user", "content": f"任务：{task.description}\n最近进展：{recent}\n是否完成？"}]
+        msgs = [{"role": "system", "content": "Determine if the task is complete. Reply only YES or NO."},
+                {"role": "user", "content": f"Task: {task.description}\nRecent progress: {recent}\nIs it complete?"}]
         try:
             resp = await http_client.post(self.simple_chat_endpoint, json={"messages": msgs, "model": "super-model", "stream": False})
             if resp.status_code == 200:
@@ -247,11 +247,11 @@ class SubAgentExecutor:
         history_str = ""
         for msg in conversation_history:
             if msg["role"] in ["assistant", "user"]:
-                content = msg["content"] if msg["content"] else "[执行了工具操作]"
+                content = msg["content"] if msg["content"] else "[Tool operation executed]"
                 history_str += f"{msg['role']}: {content}\n"
-        msgs = [{"role": "system", "content": "请从对话历史中提取出任务的【最终执行结果】，保留核心干货（如报告内容、代码、分析结果）。"},
-                {"role": "user", "content": f"任务目标：{task.description}\n\n对话历史：\n{history_str[-6000:]}\n\n请给出最终结果："}]
-        full_res = "未提取到结果"
+        msgs = [{"role": "system", "content": "Extract the 【final execution result】 from the conversation history, keeping core content (such as reports, code, analysis results)."},
+                {"role": "user", "content": f"Task objective: {task.description}\n\nConversation history:\n{history_str[-6000:]}\n\nPlease provide the final result:"}]
+        full_res = "No result extracted"
         try:
             resp = await http_client.post(self.simple_chat_endpoint, json={"messages": msgs, "model": "super-model", "stream": False})
             if resp.status_code == 200: full_res = resp.json()["choices"][0]["message"]["content"].strip()

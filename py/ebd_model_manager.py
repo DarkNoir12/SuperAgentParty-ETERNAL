@@ -10,15 +10,15 @@ import aiofiles
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-# 确保 py.get_setting 里面没有 heavy import
+# Ensure no heavy import in py.get_setting
 from py.get_setting import DEFAULT_EBD_DIR 
 
 router = APIRouter(prefix="/minilm-model")
 
-# --- 全局内存进度条 (Key: task_id, Value: dict) ---
+# --- Global in-memory progress bar (Key: task_id, Value: dict) ---
 download_progress: Dict[str, Dict[str, Any]] = {}
 
-# --- 模型配置 ---
+# --- Model configuration ---
 MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2" 
 REQUIRED_FILES = ["model_O4.onnx", "tokenizer.json"] 
 
@@ -41,7 +41,7 @@ MODELS = {
     }
 }
 
-# ---------- 工具函数 ----------
+# ---------- Utility functions ----------
 def get_model_dir() -> Path:
     return Path(DEFAULT_EBD_DIR) / MODEL_NAME
 
@@ -51,9 +51,9 @@ def model_exists() -> bool:
 
 async def download_file_worker(url: str, dest: Path, task_id: str):
     """
-    工作线程：只负责下载和更新内存字典
+    Worker thread: only responsible for downloading and updating the memory dict
     """
-    # 初始化进度
+    # Initialize progress
     download_progress[task_id] = {
         "filename": dest.name,
         "done": 0,
@@ -79,10 +79,10 @@ async def download_file_worker(url: str, dest: Path, task_id: str):
                     async for chunk in resp.aiter_bytes(1024 * 64):
                         await f.write(chunk)
                         done += len(chunk)
-                        # 更新内存，不写磁盘
+                        # Update memory, don't write to disk
                         download_progress[task_id]["done"] = done
         
-        # 下载完成
+        # Download complete
         await asyncio.to_thread(tmp.rename, dest)
         download_progress[task_id]["complete"] = True
         
@@ -95,7 +95,7 @@ async def download_file_worker(url: str, dest: Path, task_id: str):
             except:
                 pass
 
-# ---------- 接口定义 ----------
+# ---------- API definitions ----------
 
 @router.get("/status")
 def status():
@@ -118,11 +118,11 @@ async def download(source: str):
     model_subdir = get_model_dir()
     model_subdir.mkdir(parents=True, exist_ok=True)
     
-    # 准备任务
+    # Prepare tasks
     source_config = MODELS[source]
-    files_to_sync = [] # 存储 task_id
-    
-    # 启动后台任务
+    files_to_sync = []  # Store task_ids
+
+    # Start background tasks
     for item in source_config["files_to_download"]:
         url = source_config.get(item["url_key"])
         if not url: continue
@@ -134,7 +134,7 @@ async def download(source: str):
         files_to_sync.append(unique_id)
         asyncio.create_task(download_file_worker(url, dest_path, unique_id))
 
-    # SSE 生成器
+    # SSE generator
     async def event_generator():
         try:
             while True:
@@ -173,7 +173,7 @@ async def download(source: str):
             yield f"data: {json.dumps({'status': 'error', 'msg': str(e)})}\n\n"
         
         finally:
-            # 清理内存
+            # Clean up memory
             for task_id in files_to_sync:
                 download_progress.pop(task_id, None)
 

@@ -198,3 +198,49 @@ runtime/
 一键更新(update).sh
 
 nodejs/
+
+# Bundled runtimes (portable package - not source code)
+Git/
+runtime/
+electron.exe
+electron.tgz
+*.dll
+*.pak
+*.dat
+*.bin
+vk_swiftshader_icd.json
+locales/
+resources/
+LICENSES.chromium.html
+version
+
+# AI assistant configs & archives (local tooling)
+.agent/
+.qwen/
+.agents/
+.continue/
+.devcontainer/
+_archive_2026-04-10/
+skills-lock.json
+skills/electron-development/
+skills/fastapi-pro/
+skills/mcp-builder/
+
+# Workspace & batch files
+ETERNAL_Super_Agent_Party.code-workspace
+RENAME_FOLDER.bat
+
+# Setup/utility scripts (not core functionality)
+fix_tooltips.js
+fix_vif_tooltips.js
+import_character.py
+setup_api.py
+setup_menu.bat
+quick-start.bat
+quick-update.bat
+quick-update-china-mirror.bat
+start_with_dev.bat
+start_with_dev.sh
+
+# Analysis & reports
+PROJECT_ANALYSIS.md

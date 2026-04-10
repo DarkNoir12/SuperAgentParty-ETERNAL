@@ -22,7 +22,7 @@ async def DDGsearch_async(query):
             return ""
 
     try:
-        # 使用默认executor在单独线程中执行同步操作
+        # Use default executor to run synchronous operations in a separate thread
         return await asyncio.get_event_loop().run_in_executor(None, sync_search)
     except Exception as e:
         print(f"Event loop error: {e}")
@@ -32,13 +32,13 @@ duckduckgo_tool = {
     "type": "function",
     "function": {
         "name": "DDGsearch_async",
-        "description": f"通过关键词获得DuckDuckGo搜索上的信息。",
+        "description": "Get information from DuckDuckGo search results using keywords.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "需要搜索的关键词，可以是多个词语，多个词语之间用空格隔开。",
+                    "description": "The keyword(s) to search. Multiple keywords can be separated by spaces.",
                 },
             },
             "required": ["query"],
@@ -72,10 +72,10 @@ async def searxng_async(query,categories="general"):
             for result in soup.find_all('article', class_='result'):
                 title = result.find('h3').get_text() if result.find('h3') else 'No title'
                 
-                # 修复：使用正确的选择器
+                # Fix: use correct selector
                 link_elem = result.find('a', class_='url_header')
                 if not link_elem:
-                    # 备用方案：从h3内的链接获取
+                    # Fallback: get link from h3
                     h3 = result.find('h3')
                     link_elem = h3.find('a') if h3 else None
                 
@@ -106,17 +106,17 @@ searxng_tool = {
     "type": "function",
     "function": {
         "name": "searxng_async",
-        "description": "通过SearXNG开源元搜索引擎获取网络信息。",
+        "description": "Use the open-source SearXNG meta search engine to retrieve web information.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "搜索关键词，支持自然语言和多关键词组合查询",
+                    "description": "Search keywords, supporting natural language and multi-keyword combined queries.",
                 },
                 "categories": {
                     "type": "string",
-                    "description": "搜索类别，请根据用户意图选择最合适的分类。可选值：'general'(综合/默认，适合大部分百科与常识查询), 'news'(新闻，适合搜近期发生的事件), 'images'(图片，适合找图), 'videos'(视频，适合找视频资源), 'it'(IT技术，适合搜代码报错、编程开发相关), 'science'(科学，适合搜学术论文与科学资料)。",
+                    "description": "Search category. Choose the most appropriate category based on user intent. Options: 'general' (general/default, suitable for most encyclopedia and common knowledge queries), 'news' (news, suitable for recent events), 'images' (images, suitable for finding pictures), 'videos' (videos, suitable for finding video resources), 'it' (IT technology, suitable for code errors, programming related), 'science' (science, suitable for academic papers and scientific materials).",
                     "enum": ["general", "news", "images", "videos", "it", "science"],
                     "default": "general"
                 },
@@ -133,7 +133,7 @@ async def bochaai_search_async(query):
         api_key = settings['webSearch'].get('bochaai_api_key', "")
         
         if not api_key:
-            return "API key未配置"
+            return "API key not configured"
 
         url = "https://api.bochaai.com/v1/web-search"
         headers = {
@@ -151,49 +151,49 @@ async def bochaai_search_async(query):
             if response.status_code == 200:
                 result_data = response.json()
                 
-                # 解析新版API返回格式
+                # Parse new API response format
                 formatted_results = []
                 search_results = result_data.get('data', {}).get('webPages', {}).get('value', [])
-                
+
                 for item in search_results:
-                    # 构建更丰富的结果信息
+                    # Build richer result information
                     formatted_item = {
-                        'title': item.get('name', '无标题'),
+                        'title': item.get('name', 'No title'),
                         'link': item.get('url', ''),
                         'displayUrl': item.get('displayUrl', ''),
-                        'snippet': item.get('snippet', '无内容摘要'),
-                        'siteName': item.get('siteName', '未知来源'),
+                        'snippet': item.get('snippet', 'No summary'),
+                        'siteName': item.get('siteName', 'Unknown source'),
                     }
-                    # 自动生成简洁的来源名称
+                    # Auto-generate concise source name
                     if not formatted_item['siteName']:
                         formatted_item['siteName'] = formatted_item['displayUrl'].split('//')[-1].split('/')[0]
                     formatted_results.append(formatted_item)
                 
                 return json.dumps(formatted_results, indent=2, ensure_ascii=False)
             else:
-                return f"请求失败，状态码：{response.status_code}，响应内容：{response.text}"
+                return f"Request failed with status code: {response.status_code}, response: {response.text}"
         except Exception as e:
-            print(f"博查得搜索错误: {str(e)}")
+            print(f"BochaAI search error: {str(e)}")
             return ""
 
     try:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, sync_search)
     except Exception as e:
-        print(f"异步执行错误: {e}")
+        print(f"Async execution error: {e}")
         return ""
 
 bochaai_tool = {
     "type": "function",
     "function": {
         "name": "bochaai_search_async",
-        "description": "通过博查得智能搜索API获取网络信息，支持深度语义理解。",
+        "description": "Retrieve web information through the BochaAI intelligent search API, supporting deep semantic understanding.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "需要搜索的自然语言查询语句，支持复杂语义和长句（示例：阿里巴巴最新财报要点）",
+                    "description": "Natural language query string for search, supporting complex semantics and long sentences (e.g., key points from Alibaba's latest financial report)",
                 }
             },
             "required": ["query"],
@@ -228,13 +228,13 @@ tavily_tool = {
     "type": "function",
     "function": {
         "name": "Tavily_search_async",
-        "description": "通过Tavily专业搜索API获取高质量的网络信息，特别适合获取实时数据和专业分析。",
+        "description": "Retrieve high-quality web information through the Tavily professional search API, especially suitable for obtaining real-time data and professional analysis.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "需要搜索的关键词或自然语言查询语句",
+                    "description": "Keyword or natural language query string for search",
                 }
             },
             "required": ["query"],
@@ -270,13 +270,13 @@ bing_tool = {
     "type": "function",
     "function": {
         "name": "Bing_search_async",
-        "description": "通过Bing搜索API获取网络信息。",
+        "description": "Retrieve web information through the Bing Search API.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "需要搜索的关键词或自然语言查询语句",
+                    "description": "Keyword or natural language query string for search",
                 }
             },
             "required": ["query"],
@@ -312,13 +312,13 @@ google_tool = {
     "type": "function",
     "function": {
         "name": "Google_search_async",
-        "description": "通过Google搜索API获取网络信息。",
+        "description": "Retrieve web information through the Google Search API.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "需要搜索的关键词或自然语言查询语句",
+                    "description": "Keyword or natural language query string for search",
                 }
             },
             "required": ["query"],
@@ -352,13 +352,13 @@ brave_tool = {
     "type": "function",
     "function": {
         "name": "Brave_search_async",
-        "description": "通过Brave搜索API获取网络信息。",
+        "description": "Retrieve web information through the Brave Search API.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "需要搜索的关键词或自然语言查询语句",
+                    "description": "Keyword or natural language query string for search",
                 }
             },
             "required": ["query"],
@@ -378,7 +378,7 @@ async def Exa_search_async(query):
                 query=query,
                 num_results=max_results,
             )
-            # 判断repose的类型
+            # Check the type of response
             if type(response) == list or type(response) == dict:
                 return json.dumps(response, indent=2, ensure_ascii=False)
             elif type(response) == str:
@@ -398,13 +398,13 @@ exa_tool = {
     "type": "function", 
     "function": {
         "name": "Exa_search_async",
-        "description": "通过Exa搜索API获取网络信息。",
+        "description": "Retrieve web information through the Exa Search API.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "需要搜索的关键词或自然语言查询语句",
+                    "description": "Keyword or natural language query string for search",
                 }
             },
             "required": ["query"],
@@ -438,13 +438,13 @@ serper_tool = {
     "type": "function",
     "function": {
         "name": "Serper_search_async",
-        "description": "通过Serper搜索API获取网络信息。",
+        "description": "Retrieve web information through the Serper Search API.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "需要搜索的关键词或自然语言查询语句",
+                    "description": "Keyword or natural language query string for search",
                 }
             },
             "required": ["query"],
@@ -469,13 +469,13 @@ async def jina_crawler_async(original_url):
             if response.status_code == 200:
                 return response.text
             else:
-                return f"获取{original_url}网页信息失败，状态码：{response.status_code}"
+                return f"Failed to fetch web page info for {original_url}, status code: {response.status_code}"
         except requests.RequestException as e:
-            return f"获取{original_url}网页信息失败，错误信息：{str(e)}"
+            return f"Failed to fetch web page info for {original_url}, error: {str(e)}"
 
     try:
         if not await check_robots_txt(original_url):
-            raise PermissionError(f"合规拒绝: 目标网站禁止抓取")
+            raise PermissionError(f"Compliance denied: Target website disallows scraping")
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, sync_crawler)
     except Exception as e:
@@ -486,13 +486,13 @@ jina_crawler_tool = {
     "type": "function",
     "function": {
         "name": "jina_crawler_async",
-        "description": "通过Jina AI的网页爬取API获取指定URL的网页内容。指定URL可以为其他搜索引擎搜索出来的网页链接，也可以是用户给出的网站链接。但不要将本机地址或内网地址开头的URL作为参数传入，因为jina将无法访问到这些URL。",
+        "description": "Retrieve web page content for a specified URL through Jina AI's web scraping API. The URL can be a link from search engine results or a URL provided by the user. Do not pass URLs starting with localhost or intranet addresses, as Jina will not be able to access them.",
         "parameters": {
             "type": "object",
             "properties": {
                 "original_url": {
                     "type": "string",
-                    "description": "需要爬取的原始URL地址。",
+                    "description": "The original URL to be crawled.",
                 },
             },
             "required": ["original_url"],
@@ -538,11 +538,11 @@ async def Crawl4Ai_search_async(original_url):
             result = tester.submit_and_wait(request, headers=headers)
             return result['result']['markdown']
         except Exception as e:
-            return f"获取{original_url}网页信息失败，错误信息：{str(e)}"
+            return f"Failed to fetch web page info for {original_url}, error: {str(e)}"
 
     try:
         if not await check_robots_txt(original_url):
-            raise PermissionError(f"合规拒绝: 目标网站禁止抓取")
+            raise PermissionError(f"Compliance denied: Target website disallows scraping")
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, sync_search)
     except Exception as e:
@@ -553,13 +553,13 @@ Crawl4Ai_tool = {
     "type": "function",
     "function": {
         "name": "Crawl4Ai_search_async",
-        "description": "通过Crawl4Ai服务爬取指定URL的网页内容，返回Markdown格式的文本。",
+        "description": "Crawl web page content from a specified URL through the Crawl4Ai service, returning text in Markdown format.",
         "parameters": {
             "type": "object",
             "properties": {
                 "original_url": {
                     "type": "string",
-                    "description": "需要爬取的目标URL地址。",
+                    "description": "The target URL address to be crawled.",
                 }
             },
             "required": ["original_url"],
@@ -573,8 +573,8 @@ from typing import Optional, Dict, Any
 
 class FirecrawlClient:
     """
-    Firecrawl API 客户端
-    支持官方API和自部署实例
+    Firecrawl API client
+    Supports official API and self-deployed instances
     """
     
     def __init__(self, base_url: str, api_key: Optional[str] = None):
@@ -587,20 +587,20 @@ class FirecrawlClient:
             self.headers['Authorization'] = f'Bearer {api_key}'
     
     def _get_api_path(self, endpoint: str) -> str:
-        """根据基础URL自动判断API版本路径"""
+        """Automatically determine API version path based on base URL"""
         if '/v2/' in self.base_url:
-            # 官方API v2
+            # Official API v2
             return f"{self.base_url}/{endpoint}"
         elif '/v1/' in self.base_url:
-            # 自部署通常是v1
+            # Self-deployed is usually v1
             return f"{self.base_url}/{endpoint}"
         else:
-            # 默认追加路径
+            # Default appended path
             return f"{self.base_url}/{endpoint}"
     
     def scrape(self, url: str, formats: list = None, **kwargs) -> Dict[str, Any]:
         """
-        单页面抓取 (Scrape)
+        Single page scrape (Scrape)
         """
         formats = formats or ["markdown"]
         endpoint = self._get_api_path("scrape")
@@ -622,9 +622,9 @@ class FirecrawlClient:
     
     def crawl(self, url: str, limit: int = 10, **kwargs) -> str:
         """
-        整站爬取 (Crawl) - 异步作业，需要轮询
+        Full site crawl (Crawl) - asynchronous job, requires polling
         """
-        # 提交爬取任务
+        # Submit crawl task
         submit_endpoint = self._get_api_path("crawl")
         payload = {
             "url": url,
@@ -647,8 +647,8 @@ class FirecrawlClient:
         job_id = job_data.get("id")
         check_url = job_data.get("url") or f"{self.base_url}/crawl/{job_id}"
         
-        # 轮询等待完成
-        max_wait = 300  # 5分钟超时
+        # Poll and wait for completion
+        max_wait = 300  # 5 minute timeout
         interval = 2
         start_time = time.time()
         
@@ -672,7 +672,7 @@ class FirecrawlClient:
     
     def search(self, query: str, limit: int = 5, scrape_options: dict = None) -> Dict[str, Any]:
         """
-        搜索 (Search)
+        Search (Search)
         """
         endpoint = self._get_api_path("search")
         
@@ -694,7 +694,7 @@ class FirecrawlClient:
     
     def map(self, url: str, search: str = None) -> Dict[str, Any]:
         """
-        网站地图 (Map)
+        Site map (Map)
         """
         endpoint = self._get_api_path("map")
         
@@ -714,45 +714,45 @@ class FirecrawlClient:
 
 async def firecrawl_search_async(original_url: str, query: str = None) -> str:
     """
-    Firecrawl 主函数
-    支持多种模式：scrape(单页), crawl(整站), search(搜索), map(地图)
+    Firecrawl main function
+    Supports multiple modes: scrape (single page), crawl (full site), search, map (site map)
     """
     settings = await load_settings()
     
     def sync_crawler():
         try:
-            # 获取配置
+            # Get configuration
             base_url = settings['webSearch'].get('firecrawl_url', 'https://api.firecrawl.dev/v2')
             api_key = settings['webSearch'].get('firecrawl_api_key', '')
             mode = settings['webSearch'].get('firecrawl_mode', 'scrape')
             
-            # 初始化客户端
+            # Initialize client
             client = FirecrawlClient(base_url, api_key)
             
-            # 根据模式执行不同操作
+            # Execute different operations based on mode
             if mode == 'scrape':
-                # 单页抓取
+                # Single page scrape
                 result = client.scrape(
                     original_url,
                     formats=["markdown", "html"],
-                    onlyMainContent=True  # 只获取主要内容
+                    onlyMainContent=True  # Only get main content
                 )
                 
                 if result.get("success") and result.get("data"):
                     data = result["data"]
                     markdown = data.get("markdown", "")
                     metadata = data.get("metadata", {})
-                    title = metadata.get("title", "未命名页面")
+                    title = metadata.get("title", "Untitled page")
                     
                     return f"# {title}\n\n{markdown}"
                 else:
-                    return f"Firecrawl抓取失败：{result.get('error', '未知错误')}"
+                    return f"Firecrawl scrape failed: {result.get('error', 'Unknown error')}"
             
             elif mode == 'crawl':
-                # 整站爬取
+                # Full site crawl
                 result = client.crawl(
                     original_url,
-                    limit=10,  # 限制页面数避免过长
+                    limit=10,  # Limit pages to avoid overly long results
                     scrapeOptions={
                         "formats": ["markdown"],
                         "onlyMainContent": True
@@ -763,23 +763,23 @@ async def firecrawl_search_async(original_url: str, query: str = None) -> str:
                     pages = result.get("data", [])
                     total = result.get("total", 0)
                     
-                    content_parts = [f"# 站点爬取结果\n\n共获取 {total} 个页面：\n"]
+                    content_parts = [f"# Site Crawl Results\n\nRetrieved {total} pages:\n"]
                     
-                    for i, page in enumerate(pages[:5], 1):  # 最多显示5页
+                    for i, page in enumerate(pages[:5], 1):  # Show at most 5 pages
                         md = page.get("markdown", "")
                         meta = page.get("metadata", {})
-                        title = meta.get("title", f"页面{i}")
+                        title = meta.get("title", f"Page {i}")
                         url = meta.get("sourceURL", original_url)
                         
-                        content_parts.append(f"\n## {title}\n{md[:2000]}...\n[来源]({url})")
+                        content_parts.append(f"\n## {title}\n{md[:2000]}...\n[Source]({url})")
                     
                     return "\n".join(content_parts)
                 else:
-                    return f"Firecrawl爬取失败：{result.get('error', '未知错误')}"
+                    return f"Firecrawl crawl failed: {result.get('error', 'Unknown error')}"
             
             elif mode == 'search':
-                # 搜索模式 - 当传入的是查询词而非URL时
-                search_query = query or original_url  # 如果没有单独提供query，将URL作为查询词
+                # Search mode - when query is passed instead of URL
+                search_query = query or original_url  # If no separate query, use URL as query
                 result = client.search(
                     search_query,
                     limit=5,
@@ -788,10 +788,10 @@ async def firecrawl_search_async(original_url: str, query: str = None) -> str:
                 
                 if result.get("success") and result.get("data"):
                     items = result["data"]
-                    content_parts = [f"# 搜索结果: {search_query}\n"]
+                    content_parts = [f"# Search Results: {search_query}\n"]
                     
                     for i, item in enumerate(items, 1):
-                        title = item.get("title", "无标题")
+                        title = item.get("title", "No title")
                         url = item.get("url", "")
                         desc = item.get("description", "")
                         markdown = item.get("markdown", "")
@@ -799,48 +799,48 @@ async def firecrawl_search_async(original_url: str, query: str = None) -> str:
                         content_parts.append(f"\n## {i}. {title}\n{desc}\n")
                         if markdown:
                             content_parts.append(f"{markdown[:1500]}...")
-                        content_parts.append(f"[来源]({url})")
+                        content_parts.append(f"[Source]({url})")
                     
                     return "\n".join(content_parts)
                 else:
-                    return f"Firecrawl搜索失败：{result.get('error', '未知错误')}"
+                    return f"Firecrawl search failed: {result.get('error', 'Unknown error')}"
             
             elif mode == 'map':
-                # 网站地图模式
+                # Site map mode
                 result = client.map(original_url)
                 
                 if result.get("success") and result.get("links"):
                     links = result["links"]
-                    content_parts = [f"# 网站地图: {original_url}\n\n发现 {len(links)} 个链接：\n"]
+                    content_parts = [f"# Site Map: {original_url}\n\nFound {len(links)} links:\n"]
                     
-                    for link in links[:20]:  # 限制显示数量
-                        title = link.get("title", "无标题")
+                    for link in links[:20]:  # Limit display count
+                        title = link.get("title", "No title")
                         url = link.get("url", "")
                         desc = link.get("description", "")
                         content_parts.append(f"- [{title}]({url}) - {desc}")
                     
                     return "\n".join(content_parts)
                 else:
-                    return f"Firecrawl地图生成失败：{result.get('error', '未知错误')}"
+                    return f"Firecrawl map generation failed: {result.get('error', 'Unknown error')}"
             
             else:
-                return f"未知的Firecrawl模式: {mode}"
+                return f"Unknown Firecrawl mode: {mode}"
                 
         except requests.RequestException as e:
-            return f"Firecrawl请求失败：{str(e)}"
+            return f"Firecrawl request failed: {str(e)}"
         except Exception as e:
-            return f"Firecrawl处理失败：{str(e)}"
+            return f"Firecrawl processing failed: {str(e)}"
 
     try:
-        # Firecrawl自部署版本通常不需要检查robots.txt（由服务内部处理）
-        # 但官方API版本建议保留检查
+        # Firecrawl self-deployed versions usually don't need to check robots.txt (handled internally by the service)
+        # But official API versions are recommended to keep the check
         settings = await load_settings()
         base_url = settings['webSearch'].get('firecrawl_url', '')
         
-        # 如果是官方API，检查robots.txt
+        # If using official API, check robots.txt
         if 'api.firecrawl.dev' in base_url:
             if not await check_robots_txt(original_url):
-                raise PermissionError(f"合规拒绝: 目标网站禁止抓取")
+                raise PermissionError(f"Compliance denied: Target website disallows scraping")
         
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, sync_crawler)
@@ -853,17 +853,17 @@ firecrawl_tool = {
     "type": "function",
     "function": {
         "name": "firecrawl_search_async",
-        "description": "通过Firecrawl服务获取网页内容。支持单页抓取、整站爬取、搜索和网站地图模式。可以处理JavaScript渲染的页面，返回结构化的Markdown内容。",
+        "description": "Retrieve web page content through the Firecrawl service. Supports single page scrape, full site crawl, search, and site map modes. Can handle JavaScript-rendered pages and returns structured Markdown content.",
         "parameters": {
             "type": "object",
             "properties": {
                 "original_url": {
                     "type": "string",
-                    "description": "需要处理的URL地址或搜索查询词（当模式为search时）。",
+                    "description": "URL address or search query (when in search mode).",
                 },
                 "query": {
                     "type": "string",
-                    "description": "可选，当使用search模式时的具体搜索词。如果不提供，将使用original_url作为查询词。",
+                    "description": "Optional, specific search term when using search mode. If not provided, original_url will be used as the query.",
                 }
             },
             "required": ["original_url"],
@@ -876,8 +876,8 @@ import re
 
 async def simple_fetch_async(url):
     """
-    改进的网页抓取工具，返回结构化的清洗后内容
-    支持抓取内网和外网页面
+    Improved web page scraping tool, returns structured cleaned content
+    Supports scraping intranet and extranet pages
     """
     def sync_fetch():
         try:
@@ -888,18 +888,18 @@ async def simple_fetch_async(url):
             if response.status_code == 200:
                 return response.text
             else:
-                return None, f"获取{url}网页信息失败，状态码：{response.status_code}"
+                return None, f"Failed to fetch web page info for {url}, status code: {response.status_code}"
         except requests.RequestException as e:
-            return None, f"获取{url}网页信息失败，错误信息：{str(e)}"
+            return None, f"Failed to fetch web page info for {url}, error: {str(e)}"
     
     def clean_and_extract(html_content):
-        """提取并清洗HTML内容，返回结构化数据"""
+        """Extract and clean HTML content, return structured data"""
         if not html_content:
             return None
         
         soup = BeautifulSoup(html_content, 'html.parser')
         
-        # 移除不需要的标签
+        # Remove unnecessary tags
         for tag in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe', 'noscript']):
             tag.decompose()
         
@@ -908,30 +908,30 @@ async def simple_fetch_async(url):
             'sections': []
         }
         
-        # 提取页面标题
+        # Extract page title
         title_tag = soup.find('title')
         if title_tag:
             structured_content['title'] = title_tag.get_text().strip()
         
-        # 提取主要内容区域（优先查找main, article, 或id/class包含content的div）
+        # Extract main content area (prioritize main, article, or div with id/class containing content)
         main_content = soup.find('main') or soup.find('article') or \
                       soup.find('div', {'id': re.compile(r'content|main', re.I)}) or \
                       soup.find('div', {'class': re.compile(r'content|main|article', re.I)}) or \
                       soup.body or soup
         
-        # 提取所有标题和段落
+        # Extract all headings and paragraphs
         for element in main_content.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p']):
             text = element.get_text(separator=' ', strip=True)
             
-            # 清洗文本：移除多余空白
+            # Clean text: remove extra whitespace
             text = re.sub(r'\s+', ' ', text).strip()
             
-            # 过滤掉过短的内容（可能是噪音）
+            # Filter out too short content (may be noise)
             if len(text) < 3:
                 continue
             
             if element.name.startswith('h'):
-                # 标题
+                # Heading
                 level = int(element.name[1])
                 structured_content['sections'].append({
                     'type': 'heading',
@@ -939,7 +939,7 @@ async def simple_fetch_async(url):
                     'content': text
                 })
             else:
-                # 段落
+                # Paragraph
                 structured_content['sections'].append({
                     'type': 'paragraph',
                     'content': text
@@ -948,30 +948,30 @@ async def simple_fetch_async(url):
         return structured_content
     
     try:
-        # 检查 robots.txt 合规性
+        # Check robots.txt compliance
         if not await check_robots_txt(url):
             return {
                 'error': 'PermissionError',
-                'message': '合规拒绝: 目标网站禁止抓取'
+                'message': 'Compliance denied: Target website disallows scraping'
             }
         
         loop = asyncio.get_event_loop()
         html_content = await loop.run_in_executor(None, sync_fetch)
         
         if isinstance(html_content, tuple):
-            # 返回的是错误信息
+            # Returns error message
             return {
                 'error': 'FetchError',
                 'message': html_content[1]
             }
         
-        # 清洗并提取结构化内容
+        # Clean and extract structured content
         structured_data = clean_and_extract(html_content)
         
         if not structured_data or not structured_data['sections']:
             return {
                 'error': 'ParseError',
-                'message': '无法从页面中提取有效内容'
+                'message': 'Unable to extract valid content from page'
             }
         
         return structured_data
@@ -983,18 +983,18 @@ async def simple_fetch_async(url):
         }
 
 
-# OpenAI function 定义
+# OpenAI function definition
 simple_fetch_tool = {
     "type": "function",
     "function": {
         "name": "simple_fetch_async",
-        "description": "抓取指定URL的网页内容。支持内网和外网地址。",
+        "description": "Crawl web page content from a specified URL. Supports both intranet and extranet addresses.",
         "parameters": {
             "type": "object",
             "properties": {
                 "url": {
                     "type": "string",
-                    "description": "需要抓取的URL地址。",
+                    "description": "The URL address to be crawled.",
                 },
             },
             "required": ["url"],
@@ -1004,36 +1004,36 @@ simple_fetch_tool = {
 
 async def markdown_new_async(original_url):
     """
-    通过 markdown.new 服务将网页转换为 Markdown 格式
+    Convert web page to Markdown format using the markdown.new service
     """
     
     def sync_crawler():
-        # 拼接 markdown.new 的服务地址
+        # Construct markdown.new service URL
         detail_url = "https://markdown.new/"
         url = f"{detail_url}{original_url}"
         
         try:
-            # 添加一个基础的 User-Agent 防屏蔽
+            # Add basic User-Agent to avoid blocking
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
             
-            # 发起请求
+            # Make request
             response = requests.get(url, headers=headers, timeout=60)
             
             if response.status_code == 200:
-                # markdown.new 默认直接返回纯文本的 markdown 内容
+                # markdown.new returns plain text markdown content by default
                 return response.text
             else:
-                return f"获取{original_url}网页信息失败，状态码：{response.status_code}"
+                return f"Failed to fetch web page info for {original_url}, status code: {response.status_code}"
                 
         except requests.RequestException as e:
-            return f"获取{original_url}网页信息失败，错误信息：{str(e)}"
+            return f"Failed to fetch web page info for {original_url}, error: {str(e)}"
 
     try:
-        # 检查 robots.txt 合规性（保持与你原有逻辑一致）
+        # Check robots.txt compliance (consistent with your original logic)
         if not await check_robots_txt(original_url):
-            raise PermissionError(f"合规拒绝: 目标网站禁止抓取")
+            raise PermissionError(f"Compliance denied: Target website disallows scraping")
             
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, sync_crawler)
@@ -1045,13 +1045,13 @@ markdown_new_tool = {
     "type": "function",
     "function": {
         "name": "markdown_new_async",
-        "description": "通过 markdown.new 服务获取指定URL的网页内容，并自动转换为结构化的 Markdown 文本。此工具非常轻量高效，适用于外网链接。请勿传入本机地址或内网地址（会无法访问）。",
+        "description": "Retrieve web page content from a specified URL through the markdown.new service, automatically converting it to structured Markdown text. This tool is very lightweight and efficient, suitable for extranet links. Do not pass localhost or intranet addresses (they will be inaccessible).",
         "parameters": {
             "type": "object",
             "properties": {
                 "original_url": {
                     "type": "string",
-                    "description": "需要爬取的原始URL地址。必须是完整的 http 或 https 开头的网址。",
+                    "description": "The original URL to be crawled. Must be a complete URL starting with http or https.",
                 },
             },
             "required": ["original_url"],

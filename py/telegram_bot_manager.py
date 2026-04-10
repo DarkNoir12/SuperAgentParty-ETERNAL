@@ -5,17 +5,17 @@ from py.behavior_engine import BehaviorSettings
 from py.telegram_client import TelegramClient
 
 class TelegramBotConfig(BaseModel):
-    TelegramAgent: str        # LLM 模型名
+    TelegramAgent: str        # LLM model name
     memoryLimit: int
     separators: list[str]
     reasoningVisible: bool
     quickRestart: bool
     enableTTS: bool
-    bot_token: str            # Telegram 必填
-    wakeWord: str              # 唤醒词
-    # --- 新增：行为规则设置 ---
+    bot_token: str            # Telegram required
+    wakeWord: str              # Wake word
+    # --- New: Behavior rule settings ---
     behaviorSettings: Optional[BehaviorSettings] = None
-    # Telegram 特定的推送目标 ID 列表 (Chat IDs)
+    # Telegram-specific push target ID list (Chat IDs)
     behaviorTargetChatIds: List[str] = Field(default_factory=list)
 
 class TelegramBotManager:
@@ -31,14 +31,14 @@ class TelegramBotManager:
         self._startup_error: Optional[str] = None
         self._stop_requested = False
 
-    # 以下四个接口与 FeishuBotManager 完全一致，直接复用路由
+    # The following four interfaces are identical to FeishuBotManager, directly reuse routing
     def start_bot(self, config: TelegramBotConfig):
         # ADD: Check if previous thread is still alive
         if self.bot_thread and self.bot_thread.is_alive():
-            raise Exception("Telegram 机器人线程正在清理中，请稍后再试")
+            raise Exception("Telegram bot thread is cleaning up, please try again later")
         
         if self.is_running:
-            raise Exception("Telegram 机器人已在运行")
+            raise Exception("Telegram bot is already running")
         
         self.config = config
         self._shutdown_event.clear()
@@ -54,54 +54,54 @@ class TelegramBotManager:
 
         if not self._startup_complete.wait(timeout=30):
             self.stop_bot()
-            raise Exception("Telegram 机器人连接超时")
+            raise Exception("Telegram bot connection timeout")
         if self._startup_error:
             self.stop_bot()
-            raise Exception(f"Telegram 机器人启动失败: {self._startup_error}")
+            raise Exception(f"Telegram bot failed to start: {self._startup_error}")
         if not self._ready_complete.wait(timeout=30):
             self.stop_bot()
-            raise Exception("Telegram 机器人就绪超时")
+            raise Exception("Telegram bot ready timeout")
         if not self.is_running:
             self.stop_bot()
-            raise Exception("Telegram 机器人未能正常运行")
+            raise Exception("Telegram bot failed to run properly")
 
 
     def _run_bot_thread(self, config: TelegramBotConfig):
-        # 1. 创建并设置循环
+        # 1. Create and set up event loop
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
-        # 2. 定义统一的异步启动入口
+        # 2. Define unified async startup entry point
         async def main_startup():
             try:
-                # --- 步骤 A: 异步加载设置 (替代 asyncio.run) ---
+                # --- Step A: Async load settings (replace asyncio.run) ---
                 from py.get_setting import load_settings
                 from py.behavior_engine import global_behavior_engine, BehaviorSettings
                 
                 settings = await load_settings()
                 behavior_data = settings.get("behaviorSettings", {})
                 
-                # 获取目标频道列表
+                # Get target channel list
                 target_ids = config.behaviorTargetChatIds
                 if not target_ids:
                     tg_conf = settings.get("telegramBotConfig", {})
                     target_ids = tg_conf.get("behaviorTargetChatIds", [])
                 
-                # --- 步骤 B: 同步行为配置 ---
+                # --- Step B: Sync behavior config ---
                 if behavior_data:
-                    logging.info(f"Telegram 线程: 检测到行为配置，正在同步... 目标频道数: {len(target_ids)}")
+                    logging.info(f"Telegram thread: Behavior config detected, syncing... Target channel count: {len(target_ids)}")
                     target_map = {"telegram": target_ids}
-                    # 更新全局行为引擎
+                    # Update global behavior engine
                     global_behavior_engine.update_config(behavior_data, target_map)
                     
-                    # 同步到本地 config 对象
+                    # Sync to local config object
                     if isinstance(behavior_data, dict):
                         config.behaviorSettings = BehaviorSettings(**behavior_data)
                     else:
                         config.behaviorSettings = behavior_data
                     config.behaviorTargetChatIds = target_ids
 
-                # --- 步骤 C: 初始化 Client ---
+                # --- Step C: Initialize Client ---
                 self.bot_client = TelegramClient()
                 self.bot_client.TelegramAgent = config.TelegramAgent
                 self.bot_client.memoryLimit = config.memoryLimit
@@ -115,46 +115,46 @@ class TelegramBotManager:
                 self.bot_client._manager_ref = weakref.ref(self)
                 self.bot_client._ready_callback = self._on_bot_ready
 
-                # --- 步骤 D: 启动行为引擎 (此时 Loop 已在运行，可以 create_task) ---
+                # --- Step D: Start behavior engine (Loop is running, can use create_task) ---
                 if not global_behavior_engine.is_running:
                     asyncio.create_task(global_behavior_engine.start())
-                    logging.info("行为引擎已在 Telegram 线程启动")
+                    logging.info("Behavior engine started in Telegram thread")
 
-                # 标记启动完成（允许主线程继续）
+                # Mark startup complete (allow main thread to continue)
                 self._startup_complete.set()
 
-                # --- 步骤 E: 运行 Bot (阻塞) ---
+                # --- Step E: Run Bot (blocking) ---
                 await self.bot_client.run()
 
             except Exception as e:
                 if not self._stop_requested:
-                    logging.error(f"Telegram 机器人启动/运行异常: {e}")
+                    logging.error(f"Telegram bot startup/runtime exception: {e}")
                     self._startup_error = str(e)
-                # 确保主线程不被卡死
+                # Ensure main thread is not stuck
                 if not self._startup_complete.is_set():
                     self._startup_complete.set()
                 if not self._ready_complete.is_set():
                     self._ready_complete.set()
 
-        # 3. 开始运行 Loop
+        # 3. Start running Loop
         try:
             self.loop.run_until_complete(main_startup())
         except Exception as e:
             if not self._stop_requested:
-                logging.error(f"Telegram 线程 Loop 异常: {e}")
+                logging.error(f"Telegram thread Loop exception: {e}")
         finally:
             self._cleanup()
             
     def _on_bot_ready(self):
-        """机器人就绪回调（普通函数）"""
+        """Bot ready callback (regular function)"""
         self.is_running = True
         if not self._ready_complete.is_set():
             self._ready_complete.set()
-        logging.info("Telegram 机器人已完全就绪")
+        logging.info("Telegram bot is fully ready")
 
     def _cleanup(self):
         self.is_running = False
-        logging.info("开始清理 Telegram 机器人资源...")
+        logging.info("Starting to clean up Telegram bot resources...")
         
         if self.loop and not self.loop.is_closed():
             try:
@@ -170,19 +170,19 @@ class TelegramBotManager:
                 if not self.loop.is_closed():
                     self.loop.close()
             except Exception as e:
-                logging.warning(f"关闭事件循环时出错: {e}")
+                logging.warning(f"Error closing event loop: {e}")
         
         self.bot_client = None
         self.loop = None
         self._shutdown_event.set()
-        logging.info("Telegram 机器人资源清理完成")
+        logging.info("Telegram bot resources cleaned up")
 
     def stop_bot(self):
         if not self.is_running and not self.bot_thread:
-            logging.info("Telegram 机器人未在运行")
+            logging.info("Telegram bot is not running")
             return
         
-        logging.info("正在停止 Telegram 机器人...")
+        logging.info("Stopping Telegram bot...")
         self._stop_requested = True
         self.is_running = False
         
@@ -196,12 +196,12 @@ class TelegramBotManager:
             self.bot_thread.join(timeout=15)
             
             if self.bot_thread.is_alive():
-                logging.warning("Telegram 机器人线程未能在15秒内停止")
+                logging.warning("Telegram bot thread failed to stop within 15 seconds")
                 # Force cleanup as last resort
                 self._cleanup()
         
         self._stop_requested = False
-        logging.info("Telegram 机器人停止操作完成")
+        logging.info("Telegram bot stop operation complete")
 
     def get_status(self):
         return {
@@ -218,19 +218,19 @@ class TelegramBotManager:
     
     def update_behavior_config(self, config: TelegramBotConfig):
         """
-        热更新行为配置，不重启机器人
+        Hot-update behavior config without restarting the bot
         """
-        # 更新 Manager 的本地记录
+        # Update the manager's local record
         self.config = config
         
-        # 1. 更新 Client 内部的实时参数
+        # 1. Update real-time parameters in Client
         if self.bot_client:
             self.bot_client.TelegramAgent = config.TelegramAgent 
             self.bot_client.enableTTS = config.enableTTS
             self.bot_client.wakeWord = config.wakeWord
-            self.bot_client.config = config # 同步整个 config 对象
+            self.bot_client.config = config # Sync entire config object
 
-        # 2. 更新全局行为引擎
+        # 2. Update global behavior engine
         from py.behavior_engine import global_behavior_engine
         target_map = {
             "telegram": config.behaviorTargetChatIds
@@ -240,4 +240,4 @@ class TelegramBotManager:
             config.behaviorSettings,
             target_map
         )
-        logging.info("Telegram 机器人: 行为配置已热更新，计时器已重置")
+        logging.info("Telegram bot: Behavior config hot-updated, timer reset")

@@ -1,37 +1,37 @@
 FROM python:3.12-slim
 
-# 1. 安装系统依赖和 Node.js (包含 npm)
+# 1. Install system dependencies and Node.js (includes npm)
 RUN apt-get update && \
-    # 安装基础工具包和 CA 证书（curl https 时需要）
+    # Install base tools and CA certificates (required for curl with https)
     apt-get install -y gcc curl git ca-certificates && \
-    # 获取 NodeSource 的 Node 20.x 安装脚本并执行
+    # Fetch and execute the NodeSource setup script for Node 20.x
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    # 安装 nodejs (apt 安装 nodejs 会自动包含 npm)
+    # Install nodejs (apt install nodejs automatically includes npm)
     apt-get install -y nodejs && \
-    # 清理 APT 缓存，减小镜像体积
+    # Clean APT cache to reduce image size
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 2. 先只复制依赖文件 (利用缓存)
+# 2. Copy only dependency files first (to leverage caching)
 COPY pyproject.toml uv.lock ./
 
-# 3. 安装 Python 依赖
+# 3. Install Python dependencies
 RUN pip install uv && \
     uv venv && \
     uv sync
 
-# 4. 最后再复制源代码 (这样改代码不会触发重新安装依赖)
+# 4. Copy source code last (so code changes won't trigger dependency reinstallation)
 COPY . .
 
-# 5. 设置权限和目录
+# 5. Set permissions and create directories
 RUN mkdir -p uploaded_files && \
     chmod 755 uploaded_files
 
 EXPOSE 3456
 
-# 6. 配置环境变量
-# 移除 ELECTRON_NODE_EXEC，增加 IS_DOCKER=1 让 Python 后端明确知道自己在哪
+# 6. Configure environment variables
+# Remove ELECTRON_NODE_EXEC, add IS_DOCKER=1 so the Python backend knows it's running in Docker
 ENV HOST=0.0.0.0 \
     PORT=3456 \
     PYTHONUNBUFFERED=1 \

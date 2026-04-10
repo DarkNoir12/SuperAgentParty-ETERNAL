@@ -16,11 +16,11 @@ __all__ = (
 @dataclasses.dataclass
 class HeartbeatMessage:
     """
-    心跳消息
+    Heartbeat message
     """
 
     popularity: int = 0
-    """人气值，已废弃"""
+    """Popularity value, deprecated"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -32,86 +32,86 @@ class HeartbeatMessage:
 @dataclasses.dataclass
 class DanmakuMessage:
     """
-    弹幕消息
+    Danmaku message
     """
 
     mode: int = 0
-    """弹幕显示模式（滚动、顶部、底部）"""
+    """Danmaku display mode (scrolling, top, bottom)"""
     font_size: int = 0
-    """字体尺寸"""
+    """Font size"""
     color: int = 0
-    """颜色"""
+    """Color"""
     timestamp: int = 0
-    """时间戳（毫秒）"""
+    """Timestamp (milliseconds)"""
     rnd: int = 0
-    """随机数，前端叫作弹幕ID，可能是去重用的"""
+    """Random number, called danmaku ID in frontend, possibly for deduplication"""
     uid_crc32: str = ''
-    """用户ID文本的CRC32"""
+    """CRC32 of user ID text"""
     msg_type: int = 0
-    """是否礼物弹幕（节奏风暴）"""
+    """Whether it's a gift danmaku (rhythm storm)"""
     bubble: int = 0
-    """右侧评论栏气泡"""
+    """Right comment bar bubble"""
     dm_type: int = 0
-    """弹幕类型，0文本，1表情，2语音"""
+    """Danmaku type: 0 text, 1 emoji, 2 voice"""
     emoticon_options: Union[dict, str] = ''
-    """表情参数"""
+    """Emoji parameters"""
     voice_config: Union[dict, str] = ''
-    """语音参数"""
+    """Voice parameters"""
     mode_info: dict = dataclasses.field(default_factory=dict)
-    """一些附加参数"""
+    """Some additional parameters"""
 
     msg: str = ''
-    """弹幕内容"""
+    """Danmaku content"""
 
     uid: int = 0
-    """用户ID"""
+    """User ID"""
     uname: str = ''
-    """用户名"""
+    """Username"""
     face: str = ''
-    """用户头像URL"""
+    """User avatar URL"""
     admin: int = 0
-    """是否房管"""
+    """Whether room moderator"""
     vip: int = 0
-    """是否月费老爷"""
+    """Whether monthly VIP (laoye)"""
     svip: int = 0
-    """是否年费老爷"""
+    """Whether yearly VIP (laoye)"""
     urank: int = 0
-    """用户身份，用来判断是否正式会员，猜测非正式会员为5000，正式会员为10000"""
+    """User identity, used to determine whether formal member, guess non-formal member is 5000, formal member is 10000"""
     mobile_verify: int = 0
-    """是否绑定手机"""
+    """Whether phone verified"""
     uname_color: str = ''
-    """用户名颜色"""
+    """Username color"""
 
     medal_level: int = 0
-    """勋章等级"""
+    """Medal level"""
     medal_name: str = ''
-    """勋章名"""
+    """Medal name"""
     runame: str = ''
-    """勋章房间主播名"""
+    """Medal room streamer name"""
     medal_room_id: int = 0
-    """勋章房间ID"""
+    """Medal room ID"""
     mcolor: int = 0
-    """勋章颜色"""
+    """Medal color"""
     special_medal: str = ''
-    """特殊勋章"""
+    """Special medal"""
 
     user_level: int = 0
-    """用户等级"""
+    """User level"""
     ulevel_color: int = 0
-    """用户等级颜色"""
+    """User level color"""
     ulevel_rank: str = ''
-    """用户等级排名，>50000时为'>50000'"""
+    """User level rank, '>50000' when >50000"""
 
     old_title: str = ''
-    """旧头衔"""
+    """Old title"""
     title: str = ''
-    """头衔"""
+    """Title"""
 
     privilege_type: int = 0
-    """舰队类型，0非舰队，1总督，2提督，3舰长"""
+    """Guard type: 0 non-guard, 1 governor, 2 admiral, 3 captain"""
 
     wealth_level: int = 0
-    """荣耀等级"""
+    """Glory level"""
 
     @classmethod
     def from_command(cls, info: list):
@@ -191,7 +191,7 @@ class DanmakuMessage:
     @property
     def emoticon_options_dict(self) -> dict:
         """
-        示例：
+        Example:
 
         ```
         {'bulge_display': 0, 'emoticon_unique': 'official_13', 'height': 60, 'in_player_area': 1, 'is_dynamic': 1,
@@ -208,14 +208,14 @@ class DanmakuMessage:
     @property
     def voice_config_dict(self) -> dict:
         """
-        示例：
+        Example:
 
         ```
         {'voice_url': 'https%3A%2F%2Fboss.hdslb.com%2Flive-dm-voice%2Fb5b26e48b556915cbf3312a59d3bb2561627725945.wav
          %3FX-Amz-Algorithm%3DAWS4-HMAC-SHA256%26X-Amz-Credential%3D2663ba902868f12f%252F20210731%252Fshjd%252Fs3%25
          2Faws4_request%26X-Amz-Date%3D20210731T100545Z%26X-Amz-Expires%3D600000%26X-Amz-SignedHeaders%3Dhost%26
          X-Amz-Signature%3D114e7cb5ac91c72e231c26d8ca211e53914722f36309b861a6409ffb20f07ab8',
-         'file_format': 'wav', 'text': '汤，下午好。', 'file_duration': 1}
+         'file_format': 'wav', 'text': 'Tang, good afternoon.', 'file_duration': 1}
          ```
         """
         if isinstance(self.voice_config, dict):
@@ -228,11 +228,11 @@ class DanmakuMessage:
     @property
     def extra_dict(self) -> dict:
         """
-        示例：
+        Example:
 
         ```
         {'send_from_me': False, 'mode': 0, 'color': 14893055, 'dm_type': 0, 'font_size': 25, 'player_mode': 4,
-        'show_player_type': 0, 'content': '确实', 'user_hash': '2904574201', 'emoticon_unique': '', 'bulge_display': 0,
+        'show_player_type': 0, 'content': 'Indeed', 'user_hash': '2904574201', 'emoticon_unique': '', 'bulge_display': 0,
         'recommend_score': 5, 'main_state_dm_color': '', 'objective_state_dm_color': '', 'direction': 0,
         'pk_direction': 0, 'quartet_direction': 0, 'anniversary_crowd': 0, 'yeah_space_type': '', 'yeah_space_url': '',
         'jump_to_url': '', 'space_type': '', 'space_url': '', 'animation': {}, 'emots': None, 'is_audited': False,
@@ -253,49 +253,49 @@ class DanmakuMessage:
 @dataclasses.dataclass
 class GiftMessage:
     """
-    礼物消息
+    Gift message
     """
 
     gift_name: str = ''
-    """礼物名"""
+    """Gift name"""
     num: int = 0
-    """数量"""
+    """Quantity"""
     uname: str = ''
-    """用户名"""
+    """Username"""
     face: str = ''
-    """用户头像URL"""
+    """User avatar URL"""
     guard_level: int = 0
-    """舰队等级，0非舰队，1总督，2提督，3舰长"""
+    """Guard level: 0 non-guard, 1 governor, 2 admiral, 3 captain"""
     uid: int = 0
-    """用户ID"""
+    """User ID"""
     timestamp: int = 0
-    """时间戳"""
+    """Timestamp"""
     gift_id: int = 0
-    """礼物ID"""
+    """Gift ID"""
     gift_type: int = 0
-    """礼物类型（未知）"""
+    """Gift type (unknown)"""
     gift_img_basic: str = ''
-    """图标URL"""
+    """Icon URL"""
     action: str = ''
-    """目前遇到的有'喂食'、'赠送'"""
+    """Observed actions include 'feed', 'give'"""
     price: int = 0
-    """礼物单价瓜子数"""
+    """Gift unit price in seeds"""
     rnd: str = ''
-    """随机数，可能是去重用的。有时是时间戳+去重ID，有时是UUID"""
+    """Random number, possibly for deduplication. Sometimes timestamp + dedup ID, sometimes UUID"""
     coin_type: str = ''
-    """瓜子类型，'silver'或'gold'，1000金瓜子 = 1元"""
+    """Seed type: 'silver' or 'gold', 1000 gold seeds = 1 yuan"""
     total_coin: int = 0
-    """总瓜子数"""
+    """Total seeds"""
     tid: str = ''
-    """可能是事务ID，有时和rnd相同"""
+    """Possibly transaction ID, sometimes same as rnd"""
     medal_level: int = 0
-    """勋章等级"""
+    """Medal level"""
     medal_name: str = ''
-    """勋章名"""
+    """Medal name"""
     medal_room_id: int = 0
-    """勋章房间ID，未登录时是0"""
+    """Medal room ID, 0 when not logged in"""
     medal_ruid: int = 0
-    """勋章主播ID"""
+    """Medal streamer ID"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -338,27 +338,27 @@ class GiftMessage:
 @dataclasses.dataclass
 class GuardBuyMessage:
     """
-    上舰消息
+    Guard purchase message
     """
 
     uid: int = 0
-    """用户ID"""
+    """User ID"""
     username: str = ''
-    """用户名"""
+    """Username"""
     guard_level: int = 0
-    """舰队等级，0非舰队，1总督，2提督，3舰长"""
-    num: int = 0  # 可以理解为礼物数量？
-    """数量"""
+    """Guard level: 0 non-guard, 1 governor, 2 admiral, 3 captain"""
+    num: int = 0  # Can be understood as gift quantity?
+    """Quantity"""
     price: int = 0
-    """单价金瓜子数"""
+    """Unit price in gold seeds"""
     gift_id: int = 0
-    """礼物ID"""
+    """Gift ID"""
     gift_name: str = ''
-    """礼物名"""
+    """Gift name"""
     start_time: int = 0
-    """开始时间戳，和结束时间戳相同"""
+    """Start timestamp, same as end timestamp"""
     end_time: int = 0
-    """结束时间戳，和开始时间戳相同"""
+    """End timestamp, same as start timestamp"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -378,31 +378,31 @@ class GuardBuyMessage:
 @dataclasses.dataclass
 class UserToastV2Message:
     """
-    另一个上舰消息，包含的数据更多
+    Another guard purchase message, contains more data
     """
 
     uid: int = 0
-    """用户ID"""
+    """User ID"""
     username: str = ''
-    """用户名"""
+    """Username"""
     guard_level: int = 0
-    """舰队等级，0非舰队，1总督，2提督，3舰长"""
-    num: int = 0  # 可以理解为礼物数量？
-    """数量"""
+    """Guard level: 0 non-guard, 1 governor, 2 admiral, 3 captain"""
+    num: int = 0  # Can be understood as gift quantity?
+    """Quantity"""
     price: int = 0
-    """单价金瓜子数"""
+    """Unit price in gold seeds"""
     unit: str = ''
-    """单位，根据开放平台的文档，正常单位为“月”，如为其他内容，无视`guard_num`以本字段内容为准，例如`*3天`"""
+    """Unit, according to open platform documentation, normal unit is "month", if other content, ignore `guard_num` and use this field instead, e.g. "*3 days" """
     gift_id: int = 0
-    """礼物ID"""
+    """Gift ID"""
     start_time: int = 0
-    """开始时间戳，和结束时间戳相同"""
+    """Start timestamp, same as end timestamp"""
     end_time: int = 0
-    """结束时间戳，和开始时间戳相同"""
+    """End timestamp, same as start timestamp"""
     source: int = 0
-    """猜测0是自己买的，2是别人送的，这个只影响是否播动画"""
+    """Guess 0 means self-purchased, 2 means gifted by others, this only affects whether animation is played"""
     toast_msg: str = ''
-    """提示信息（"<%XXX%> 在主播XXX的直播间续费了舰长，今天是TA陪伴主播的第XXX天"）"""
+    """Notification message ("<%XXX%> renewed captain in streamer XXX's room, today is the XXXth day accompanying the streamer")"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -429,55 +429,55 @@ class UserToastV2Message:
 @dataclasses.dataclass
 class SuperChatMessage:
     """
-    醒目留言消息
+    Super chat message
     """
 
     price: int = 0
-    """价格（人民币）"""
+    """Price (RMB)"""
     message: str = ''
-    """消息"""
+    """Message"""
     message_trans: str = ''
-    """消息日文翻译"""
+    """Message Japanese translation"""
     start_time: int = 0
-    """开始时间戳"""
+    """Start timestamp"""
     end_time: int = 0
-    """结束时间戳"""
+    """End timestamp"""
     time: int = 0
-    """剩余时间（约等于 结束时间戳 - 开始时间戳）"""
+    """Remaining time (approximately end timestamp - start timestamp)"""
     id: int = 0
-    """醒目留言ID，删除时用"""
+    """Super chat ID, used for deletion"""
     gift_id: int = 0
-    """礼物ID"""
+    """Gift ID"""
     gift_name: str = ''
-    """礼物名"""
+    """Gift name"""
     uid: int = 0
-    """用户ID"""
+    """User ID"""
     uname: str = ''
-    """用户名"""
+    """Username"""
     face: str = ''
-    """用户头像URL"""
+    """User avatar URL"""
     guard_level: int = 0
-    """舰队等级，0非舰队，1总督，2提督，3舰长"""
+    """Guard level: 0 non-guard, 1 governor, 2 admiral, 3 captain"""
     user_level: int = 0
-    """用户等级"""
+    """User level"""
     background_bottom_color: str = ''
-    """底部背景色，'#rrggbb'"""
+    """Bottom background color, '#rrggbb'"""
     background_color: str = ''
-    """背景色，'#rrggbb'"""
+    """Background color, '#rrggbb'"""
     background_icon: str = ''
-    """背景图标"""
+    """Background icon"""
     background_image: str = ''
-    """背景图URL"""
+    """Background image URL"""
     background_price_color: str = ''
-    """背景价格颜色，'#rrggbb'"""
+    """Background price color, '#rrggbb'"""
     medal_level: int = 0
-    """勋章等级"""
+    """Medal level"""
     medal_name: str = ''
-    """勋章名"""
+    """Medal name"""
     medal_room_id: int = 0
-    """勋章房间ID"""
+    """Medal room ID"""
     medal_ruid: int = 0
-    """勋章主播ID"""
+    """Medal streamer ID"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -523,11 +523,11 @@ class SuperChatMessage:
 @dataclasses.dataclass
 class SuperChatDeleteMessage:
     """
-    删除醒目留言消息
+    Delete super chat message
     """
 
     ids: List[int] = dataclasses.field(default_factory=list)
-    """醒目留言ID数组"""
+    """Super chat ID array"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -539,19 +539,19 @@ class SuperChatDeleteMessage:
 @dataclasses.dataclass
 class InteractWordMessage:
     """
-    进入房间、关注主播等互动消息
+    Interactive message: enter room, follow streamer, etc.
     """
 
     uid: int = 0
-    """用户ID"""
+    """User ID"""
     username: str = ''
-    """用户名"""
+    """Username"""
     face: str = ''
-    """用户头像URL"""
+    """User avatar URL"""
     timestamp: int = 0
-    """时间戳"""
+    """Timestamp"""
     msg_type: int = 0
-    """`{1: '进入', 2: '关注了', 3: '分享了', 4: '特别关注了', 5: '互粉了', 6: '为主播点赞了'}`"""
+    """`{1: 'Entered', 2: 'Followed', 3: 'Shared', 4: 'Special followed', 5: 'Mutual followed', 6: 'Liked streamer'}`"""
 
     @classmethod
     def from_command(cls, data: dict):

@@ -11,50 +11,50 @@ __all__ = (
     'LikeMessage',
 )
 
-# 注释都是复制自官方文档的，看不懂的话问B站
+# Comments are copied from official documentation, ask Bilibili if you don't understand
 # https://open-live.bilibili.com/document/f9ce25be-312e-1f4a-85fd-fef21f1637f8
 
 
 @dataclasses.dataclass
 class DanmakuMessage:
     """
-    弹幕消息
+    Danmaku message
     """
 
     uname: str = ''
-    """用户昵称"""
+    """User nickname"""
     open_id: str = ''
-    """用户唯一标识"""
+    """User unique identifier"""
     uface: str = ''
-    """用户头像"""
+    """User avatar"""
     timestamp: int = 0
-    """弹幕发送时间秒级时间戳"""
+    """Danmaku send time in seconds timestamp"""
     room_id: int = 0
-    """弹幕接收的直播间"""
+    """Live room receiving danmaku"""
     msg: str = ''
-    """弹幕内容"""
+    """Danmaku content"""
     msg_id: str = ''
-    """消息唯一id"""
+    """Message unique ID"""
     guard_level: int = 0
-    """对应房间大航海等级"""
+    """Corresponding room guard level"""
     fans_medal_wearing_status: bool = False
-    """该房间粉丝勋章佩戴情况"""
+    """Fan medal wearing status for this room"""
     fans_medal_name: str = ''
-    """粉丝勋章名"""
+    """Fan medal name"""
     fans_medal_level: int = 0
-    """对应房间勋章信息"""
+    """Corresponding room medal info"""
     emoji_img_url: str = ''
-    """表情包图片地址"""
+    """Emoji image URL"""
     dm_type: int = 0
-    """弹幕类型 0：普通弹幕 1：表情包弹幕"""
+    """Danmaku type: 0 - normal danmaku, 1 - emoji danmaku"""
     glory_level: int = 0
-    """直播荣耀等级"""
+    """Live glory level"""
     reply_open_id: str = ''
-    """被at用户唯一标识"""
+    """User unique identifier being @mentioned"""
     reply_uname: str = ''
-    """被at的用户昵称"""
+    """Nickname of @mentioned user"""
     is_admin: int = 0
-    """发送弹幕的用户是否是房管，取值范围0或1，取值为1时是房管"""
+    """Whether the danmaku sender is a room moderator, 0 or 1, 1 means moderator"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -82,17 +82,17 @@ class DanmakuMessage:
 @dataclasses.dataclass
 class AnchorInfo:
     """
-    主播信息
+    Streamer info
     """
 
     uid: int = 0
-    """收礼主播uid"""
+    """Streamer UID receiving the gift"""
     open_id: str = ''
-    """收礼主播唯一标识"""
+    """Streamer unique identifier"""
     uname: str = ''
-    """收礼主播昵称"""
+    """Streamer nickname"""
     uface: str = ''
-    """收礼主播头像"""
+    """Streamer avatar"""
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -107,17 +107,17 @@ class AnchorInfo:
 @dataclasses.dataclass
 class ComboInfo:
     """
-    连击信息
+    Combo info
     """
 
     combo_base_num: int = 0
-    """每次连击赠送的道具数量"""
+    """Number of items gifted per combo hit"""
     combo_count: int = 0
-    """连击次数"""
+    """Combo count"""
     combo_id: str = ''
-    """连击id"""
+    """Combo ID"""
     combo_timeout: int = 0
-    """连击有效期秒"""
+    """Combo validity period in seconds"""
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -132,60 +132,60 @@ class ComboInfo:
 @dataclasses.dataclass
 class GiftMessage:
     """
-    礼物消息
+    Gift message
     """
 
     room_id: int = 0
-    """房间号"""
+    """Room number"""
     open_id: str = ''
-    """用户唯一标识"""
+    """User unique identifier"""
     uname: str = ''
-    """送礼用户昵称"""
+    """Gift sender nickname"""
     uface: str = ''
-    """送礼用户头像"""
+    """Gift sender avatar"""
     gift_id: int = 0
-    """道具id(盲盒:爆出道具id)"""
+    """Item ID (blind box: revealed item ID)"""
     gift_name: str = ''
-    """道具名(盲盒:爆出道具名)"""
+    """Item name (blind box: revealed item name)"""
     gift_num: int = 0
-    """赠送道具数量"""
+    """Number of items gifted"""
     price: int = 0
     """
-    礼物爆出单价，(1000 = 1元 = 10电池),盲盒:爆出道具的价值
+    Gift unit price revealed (1000 = 1 yuan = 10 battery), blind box: revealed item value
 
-    注意：
+    Note:
 
-    - 免费礼物这个字段也可能不是0，而是银瓜子数
-    - 有些打折礼物这里不是实际支付的价值，实际价值应该用 `r_price`
+    - For free gifts, this field may not be 0, it could be silver seed points count
+    - Some discounted gifts don't show actual value here, actual value should use `r_price`
     """
     r_price: int = 0
     """
-    实际价值(1000 = 1元 = 10电池),盲盒:爆出道具的价值
+    Actual value (1000 = 1 yuan = 10 battery), blind box: revealed item value
 
-    注意：免费礼物这个字段也可能不是0
+    Note: for free gifts, this field may not be 0
     """
     paid: bool = False
-    """是否是付费道具"""
+    """Whether it's a paid item"""
     fans_medal_level: int = 0
-    """实际送礼人的勋章信息"""
+    """Actual sender medal info"""
     fans_medal_name: str = ''
-    """粉丝勋章名"""
+    """Fan medal name"""
     fans_medal_wearing_status: bool = False
-    """该房间粉丝勋章佩戴情况"""
+    """Fan medal wearing status for this room"""
     guard_level: int = 0
-    """大航海等级"""
+    """Guard level"""
     timestamp: int = 0
-    """收礼时间秒级时间戳"""
+    """Gift receiving time in seconds timestamp"""
     anchor_info: AnchorInfo = dataclasses.field(default_factory=AnchorInfo)
-    """主播信息"""
+    """Streamer info"""
     msg_id: str = ''
-    """消息唯一id"""
+    """Message unique ID"""
     gift_icon: str = ''
-    """道具icon"""
+    """Item icon"""
     combo_gift: bool = False
-    """是否是combo道具"""
+    """Whether it's a combo gift"""
     combo_info: ComboInfo = dataclasses.field(default_factory=ComboInfo)
-    """连击信息"""
+    """Combo info"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -214,23 +214,23 @@ class GiftMessage:
             anchor_info=AnchorInfo.from_dict(data['anchor_info']),
             msg_id=data['msg_id'],
             gift_icon=data['gift_icon'],
-            combo_gift=data.get('combo_gift', False),  # 官方的调试工具没发这个字段
-            combo_info=combo_info,  # 官方的调试工具没发这个字段
+            combo_gift=data.get('combo_gift', False),  # Official debugger doesn't send this field
+            combo_info=combo_info,  # Official debugger doesn't send this field
         )
 
 
 @dataclasses.dataclass
 class UserInfo:
     """
-    用户信息
+    User info
     """
 
     open_id: str = ''
-    """用户唯一标识"""
+    """User unique identifier"""
     uname: str = ''
-    """用户昵称"""
+    """User nickname"""
     uface: str = ''
-    """用户头像"""
+    """User avatar"""
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -244,31 +244,31 @@ class UserInfo:
 @dataclasses.dataclass
 class GuardBuyMessage:
     """
-    上舰消息
+    Guard purchase message
     """
 
     user_info: UserInfo = dataclasses.field(default_factory=UserInfo)
-    """用户信息"""
+    """User info"""
     guard_level: int = 0
-    """大航海等级"""
+    """Guard level"""
     guard_num: int = 0
-    """大航海数量"""
+    """Guard quantity"""
     guard_unit: str = ''
-    """大航海单位(正常单位为“月”，如为其他内容，无视`guard_num`以本字段内容为准，例如`*3天`)"""
+    """Guard unit (normal unit is "month", if other content, ignore `guard_num` and use this field instead, e.g. "*3 days")"""
     price: int = 0
-    """大航海金瓜子"""
+    """Guard price in gold seeds"""
     fans_medal_level: int = 0
-    """粉丝勋章等级"""
+    """Fan medal level"""
     fans_medal_name: str = ''
-    """粉丝勋章名"""
+    """Fan medal name"""
     fans_medal_wearing_status: bool = False
-    """该房间粉丝勋章佩戴情况"""
+    """Fan medal wearing status for this room"""
     room_id: int = 0
-    """房间号"""
+    """Room number"""
     msg_id: str = ''
-    """消息唯一id"""
+    """Message unique ID"""
     timestamp: int = 0
-    """上舰时间秒级时间戳"""
+    """Guard purchase time in seconds timestamp"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -290,39 +290,39 @@ class GuardBuyMessage:
 @dataclasses.dataclass
 class SuperChatMessage:
     """
-    醒目留言消息
+    Super chat message
     """
 
     room_id: int = 0
-    """直播间id"""
+    """Live room ID"""
     open_id: str = ''
-    """用户唯一标识"""
+    """User unique identifier"""
     uname: str = ''
-    """购买的用户昵称"""
+    """Purchasing user nickname"""
     uface: str = ''
-    """购买用户头像"""
+    """Purchasing user avatar"""
     message_id: int = 0
-    """留言id(风控场景下撤回留言需要)"""
+    """Message ID (needed for retracting messages in risk control scenarios)"""
     message: str = ''
-    """留言内容"""
+    """Message content"""
     rmb: int = 0
-    """支付金额(元)"""
+    """Payment amount (yuan)"""
     timestamp: int = 0
-    """赠送时间秒级"""
+    """Gift time in seconds"""
     start_time: int = 0
-    """生效开始时间"""
+    """Effective start time"""
     end_time: int = 0
-    """生效结束时间"""
+    """Effective end time"""
     guard_level: int = 0
-    """对应房间大航海等级"""
+    """Corresponding room guard level"""
     fans_medal_level: int = 0
-    """对应房间勋章信息"""
+    """Corresponding room medal info"""
     fans_medal_name: str = ''
-    """对应房间勋章名字"""
+    """Corresponding room medal name"""
     fans_medal_wearing_status: bool = False
-    """该房间粉丝勋章佩戴情况"""
+    """Fan medal wearing status for this room"""
     msg_id: str = ''
-    """消息唯一id"""
+    """Message unique ID"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -348,15 +348,15 @@ class SuperChatMessage:
 @dataclasses.dataclass
 class SuperChatDeleteMessage:
     """
-    删除醒目留言消息
+    Delete super chat message
     """
 
     room_id: int = 0
-    """直播间id"""
+    """Live room ID"""
     message_ids: List[int] = dataclasses.field(default_factory=list)
-    """留言id"""
+    """Message IDs"""
     msg_id: str = ''
-    """消息唯一id"""
+    """Message unique ID"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -370,37 +370,37 @@ class SuperChatDeleteMessage:
 @dataclasses.dataclass
 class LikeMessage:
     """
-    点赞消息
+    Like message
 
-    请注意：
+    Note:
 
-    - 只有房间处于开播中，才会触发点赞事件
-    - 对单一用户最近2秒聚合发送一次点赞次数
+    - Like events are only triggered when the room is streaming
+    - Like counts are aggregated per user every 2 seconds
     """
 
     uname: str = ''
-    """用户昵称"""
+    """User nickname"""
     open_id: str = ''
-    """用户唯一标识"""
+    """User unique identifier"""
     uface: str = ''
-    """用户头像"""
+    """User avatar"""
     timestamp: int = 0
-    """时间秒级时间戳"""
+    """Time in seconds timestamp"""
     room_id: int = 0
-    """发生的直播间"""
+    """Live room where it occurred"""
     like_text: str = ''
-    """点赞文案(“xxx点赞了”)"""
+    """Like text (e.g., "xxx liked")"""
     like_count: int = 0
-    """对单个用户最近2秒的点赞次数聚合"""
+    """Aggregated like count for a single user in the last 2 seconds"""
     fans_medal_wearing_status: bool = False
-    """该房间粉丝勋章佩戴情况"""
+    """Fan medal wearing status for this room"""
     fans_medal_name: str = ''
-    """粉丝勋章名"""
+    """Fan medal name"""
     fans_medal_level: int = 0
-    """对应房间勋章信息"""
-    msg_id: str = ''  # 官方文档表格里没列出这个字段，但是参考JSON里面有
-    """消息唯一id"""
-    # 还有个guard_level，但官方文档没有出现这个字段，就不添加了
+    """Corresponding room medal info"""
+    msg_id: str = ''  # This field is not listed in the official documentation table, but it exists in the reference JSON
+    """Message unique ID"""
+    # There is also a guard_level field, but since it doesn't appear in the official documentation, it is not added
 
     @classmethod
     def from_command(cls, data: dict):
@@ -415,28 +415,28 @@ class LikeMessage:
             fans_medal_wearing_status=data['fans_medal_wearing_status'],
             fans_medal_name=data['fans_medal_name'],
             fans_medal_level=data['fans_medal_level'],
-            msg_id=data.get('msg_id', ''),  # 官方文档表格里没列出这个字段，但是参考JSON里面有
+            msg_id=data.get('msg_id', ''),  # This field is not listed in the official documentation table, but it exists in the reference JSON
         )
 
 
 @dataclasses.dataclass
 class RoomEnterMessage:
     """
-    进入房间消息
+    Enter room message
     """
 
     room_id: int = 0
-    """直播间id"""
+    """Live room ID"""
     uface: str = ''
-    """用户头像"""
+    """User avatar"""
     uname: str = ''
-    """用户昵称"""
+    """User nickname"""
     open_id: str = ''
-    """用户唯一标识"""
+    """User unique identifier"""
     timestamp: int = 0
-    """发生的时间戳"""
-    msg_id: str = ''  # 官方文档表格里没列出这个字段，但是实际上有
-    """消息唯一id"""
+    """Timestamp of occurrence"""
+    msg_id: str = ''  # This field is not listed in the official documentation table, but it actually exists
+    """Message unique ID"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -446,28 +446,28 @@ class RoomEnterMessage:
             uname=data['uname'],
             open_id=data['open_id'],
             timestamp=data['timestamp'],
-            msg_id=data.get('msg_id', ''),  # 官方文档表格里没列出这个字段，但是实际上有
+            msg_id=data.get('msg_id', ''),  # This field is not listed in the official documentation table, but it actually exists
         )
 
 
 @dataclasses.dataclass
 class LiveStartMessage:
     """
-    开始直播消息
+    Start streaming message
     """
 
     room_id: int = 0
-    """直播间id"""
+    """Live room ID"""
     open_id: str = ''
-    """用户唯一标识"""
+    """User unique identifier"""
     timestamp: int = 0
-    """发生的时间戳"""
+    """Timestamp of occurrence"""
     area_name: str = ''
-    """开播二级分区名"""
+    """Secondary category name at stream start"""
     title: str = ''
-    """开播时刻，直播间的标题"""
-    msg_id: str = ''  # 官方文档表格里没列出这个字段，但是实际上有
-    """消息唯一id"""
+    """Live room title at stream start"""
+    msg_id: str = ''  # This field is not listed in the official documentation table, but it actually exists
+    """Message unique ID"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -477,28 +477,28 @@ class LiveStartMessage:
             timestamp=data['timestamp'],
             area_name=data['area_name'],
             title=data['title'],
-            msg_id=data.get('msg_id', ''),  # 官方文档表格里没列出这个字段，但是实际上有
+            msg_id=data.get('msg_id', ''),  # This field is not listed in the official documentation table, but it actually exists
         )
 
 
 @dataclasses.dataclass
 class LiveEndMessage:
     """
-    结束直播消息
+    End streaming message
     """
 
     room_id: int = 0
-    """直播间id"""
+    """Live room ID"""
     open_id: str = ''
-    """用户唯一标识"""
+    """User unique identifier"""
     timestamp: int = 0
-    """发生的时间戳"""
+    """Timestamp of occurrence"""
     area_name: str = ''
-    """开播二级分区名"""
+    """Secondary category name at stream start"""
     title: str = ''
-    """开播时刻，直播间的标题"""
-    msg_id: str = ''  # 官方文档表格里没列出这个字段，但是实际上有
-    """消息唯一id"""
+    """Live room title at stream start"""
+    msg_id: str = ''  # This field is not listed in the official documentation table, but it actually exists
+    """Message unique ID"""
 
     @classmethod
     def from_command(cls, data: dict):
@@ -508,5 +508,5 @@ class LiveEndMessage:
             timestamp=data['timestamp'],
             area_name=data['area_name'],
             title=data['title'],
-            msg_id=data.get('msg_id', ''),  # 官方文档表格里没列出这个字段，但是实际上有
+            msg_id=data.get('msg_id', ''),  # This field is not listed in the official documentation table, but it actually exists
         )

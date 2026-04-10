@@ -7,16 +7,16 @@ import asyncio
 import websockets
 from py.get_setting import UPLOAD_FILES_DIR, get_port, load_settings
 
-# 全局变量，用于保持当前上下文
+# Global variable used to maintain the current context
 CURRENT_PAGE_INDEX = 0
 
 async def get_cdp_port():
     settings = await load_settings()
-    # 默认回退到 9222，或者你的配置值
-    return settings.get('chromeMCPSettings', {}).get('CDPport', 3456) # 假设你主进程默认端口是3456
+    # Default fallback to 9222, or your configured value
+    return settings.get('chromeMCPSettings', {}).get('CDPport', 3456) # Assuming your main process default port is 3456
 
 async def get_targets():
-    """获取所有 CDP 目标"""
+    """Get all CDP targets"""
     port = await get_cdp_port()
     try:
         resp = requests.get(f'http://127.0.0.1:{port}/json/list')
@@ -26,10 +26,10 @@ async def get_targets():
         return []
 
 async def get_main_window_ws():
-    """获取主窗口（Vue 控制器）的 WebSocket URL"""
+    """Get the WebSocket URL of the main window (Vue controller)"""
     targets = await get_targets()
-    
-    # 调试：打印所有目标，方便你看清楚当前有哪些窗口
+
+    # Debug: print all targets to see what windows are available
     # print("Current CDP Targets:", json.dumps(targets, indent=2))
     
     for t in targets:
@@ -37,37 +37,37 @@ async def get_main_window_ws():
         title = t.get('title', '')
         target_type = t.get('type')
 
-        # 1. 必须是 page 类型 (排除 webview 标签页, service_worker 等)
+        # 1. Must be page type (exclude webview tabs, service_workers, etc.)
         if target_type != 'page':
             continue
 
-        # 2. ★ 关键：排除 VRM 窗口
-        # VRM 窗口的 URL 通常包含 'vrm.html'
+        # 2. KEY: Exclude VRM window
+        # VRM window URLs usually contain 'vrm.html'
         if 'vrm.html' in url:
             continue
-            
-        # 3. ★ 关键：排除开发者工具窗口 (如果打开了 DevTools)
+
+        # 3. KEY: Exclude developer tools window (if DevTools is open)
         if 'devtools://' in url:
             continue
-            
-        # 4. (可选) 排除扩展程序窗口
+
+        # 4. (Optional) Exclude extension pages
         if 'ext' in url:
             continue
 
-        # 5. 找到主窗口
-        # 主窗口的特征通常是：
-        # - URL 包含 'skeleton.html' (骨架屏阶段)
-        # - 或者 URL 是 'http://127.0.0.1:端口/' (加载完成阶段)
-        # - 只要不是上面排除的特定窗口，剩下的 page 通常就是主窗口
+        # 5. Find the main window
+        # Main window characteristics:
+        # - URL contains 'skeleton.html' (during skeleton screen phase)
+        # - Or URL is 'http://127.0.0.1:port/' (after loading completes)
+        # - As long as it's not one of the excluded windows above, the remaining page is usually the main window
         return t.get('webSocketDebuggerUrl')
         
     print("Error: Could not find Main Window in CDP targets.")
     return None
 
 async def get_webview_ws(index=None):
-    """获取具体网页的 WebSocket URL"""
+    """Get the WebSocket URL of a specific web view"""
     targets = await get_targets()
-    # 过滤出所有 webview (实际的网页标签)
+    # Filter all webviews (actual web page tabs)
     webviews = [t for t in targets if t['type'] == 'webview']
     
     target_idx = index if index is not None else CURRENT_PAGE_INDEX
@@ -77,12 +77,12 @@ async def get_webview_ws(index=None):
     return None
 
 async def cdp_command(ws_url, method, params=None):
-    """发送 CDP 命令的通用函数"""
+    """Generic function to send CDP commands"""
     if not ws_url:
         return {"error": "Target not found"}
-    
-    # 修改这里：增加 max_size 参数
-    # 设置为 None 表示不限制大小，或者设置为 10 * 1024 * 1024 (10MB)
+
+    # Modified here: added max_size parameter
+    # Set to None for unlimited size, or 10 * 1024 * 1024 (10MB)
     async with websockets.connect(ws_url, max_size=10 * 1024 * 1024) as ws:
         cmd_id = 1
         message = {
@@ -104,16 +104,16 @@ async def cdp_command(ws_url, method, params=None):
 
 async def call_vue_method(method_name, args_list=None):
     """
-    通用函数：调用 window.aiBrowser 的方法 (带重试机制)
+    Generic function: Call window.aiBrowser methods (with retry mechanism)
     """
     max_retries = 3
-    retry_delay = 1.0 # 1秒等待
+    retry_delay = 1.0 # 1 second wait
 
     ws_url = await get_main_window_ws()
     if not ws_url:
         return {"error": "Main window not found"}
 
-    # 构造参数字符串
+    # Construct parameter string
     if args_list:
         json_args = [json.dumps(arg) for arg in args_list]
         args_str = ", ".join(json_args)
@@ -123,7 +123,7 @@ async def call_vue_method(method_name, args_list=None):
     expression = f"window.aiBrowser.{method_name}({args_str})"
 
     for attempt in range(max_retries):
-        # 每次重试都重新连接 WebSocket，防止 WS 链接本身断开
+        # Reconnect WebSocket on each retry to prevent the WS connection itself from disconnecting
         try:
             res = await cdp_command(ws_url, "Runtime.evaluate", {
                 "expression": expression,
@@ -131,45 +131,45 @@ async def call_vue_method(method_name, args_list=None):
                 "awaitPromise": True
             })
             
-            # 1. 检查 CDP 协议本身的异常
+            # 1. Check CDP protocol-level exceptions
             if 'exceptionDetails' in res:
                 exc = res['exceptionDetails']
                 msg = exc.get('text', 'Unknown Error')
                 if 'exception' in exc and 'description' in exc['exception']:
                     msg = f"{msg}: {exc['exception']['description']}"
                 
-                # ★ 关键：如果遇到 Illegal invocation，抛出异常以触发重试
+                # KEY: If encountering Illegal invocation, throw exception to trigger retry
                 if "Illegal invocation" in msg or "GUEST_VIEW_MANAGER_CALL" in msg:
                     print(f"[Warn] Retrying {method_name} due to Electron error: {msg}")
-                    raise ValueError("Electron Webview Error") # 触发 except 重试
+                    raise ValueError("Electron Webview Error") # Trigger except block for retry
                 
                 return f"Error executing {method_name}: {msg}"
 
-            # 2. 检查返回值是否包含错误信息 (因为你的 JS 代码里 try-catch 后返回了 "Fill Error: ...")
+            # 2. Check if return value contains error info (because your JS code returns "Fill Error: ..." after try-catch)
             remote_object = res.get('result', {})
             value = remote_object.get('value', "")
-            
-            # 如果返回值是字符串且包含 Electron 内部错误，也视为失败进行重试
+
+            # If return value is a string and contains Electron internal error, also treat as failure for retry
             if isinstance(value, str) and ("Illegal invocation" in value or "GUEST_VIEW_MANAGER_CALL" in value):
                 print(f"[Warn] Retrying {method_name} due to JS Result error: {value}")
                 raise ValueError("Electron Webview Error")
 
             if 'value' in remote_object:
                 return remote_object['value']
-            
+
             if remote_object.get('type') == 'undefined':
                 return "Success"
-                
+
             return f"Operation completed (Type: {remote_object.get('type')})"
 
         except Exception as e:
-            # 如果是最后一次尝试，则放弃
+            # If this is the last attempt, give up
             if attempt == max_retries - 1:
                 return f"Failed {method_name} after {max_retries} retries. Last error: {str(e)}"
-            
-            # 等待后重试
+
+            # Wait and retry
             await asyncio.sleep(retry_delay)
-            # 有时候主窗口 WS URL 也会变，重新获取一下更稳妥
+            # Sometimes the main window WS URL also changes, safer to re-fetch
             ws_url = await get_main_window_ws() or ws_url
 
 # ------------------------------------------
@@ -178,12 +178,12 @@ async def call_vue_method(method_name, args_list=None):
 
 async def take_snapshot(filePath=None, verbose=False):
     """
-    获取页面可交互元素的 DOM 树快照。
+    Get a DOM tree snapshot of interactive elements on the page.
     """
-    # 调用 Vue 方法生成快照字符串
+    # Call Vue method to generate snapshot string
     result = await call_vue_method('getWebviewSnapshot', [verbose])
-    
-    # 如果指定了 filePath，则保存到文件（模拟 Agent 行为）
+
+    # If filePath is specified, save to file (simulating Agent behavior)
     if filePath and result and isinstance(result, str):
         try:
             with open(filePath, 'w', encoding='utf-8') as f:
@@ -191,39 +191,39 @@ async def take_snapshot(filePath=None, verbose=False):
             return f"Snapshot saved to {filePath}"
         except Exception as e:
             return f"Error saving snapshot: {str(e)}"
-            
-    # 否则直接返回快照内容
+
+    # Otherwise return snapshot content directly
     return result
 
 async def click(uid, dblClick=False):
-    """点击元素"""
+    """Click an element"""
     return await call_vue_method('webviewClick', [uid, dblClick])
 
 async def fill(uid, value):
-    """填写输入框"""
+    """Fill an input field"""
     return await call_vue_method('webviewFill', [uid, value])
 
 async def fill_form(elements):
     """
-    批量填写表单
+    Batch fill multiple form fields
     elements: [{'uid': '...', 'value': '...'}, ...]
     """
     return await call_vue_method('webviewFillForm', [elements])
 
 async def drag(from_uid, to_uid):
-    """拖拽元素"""
+    """Drag an element"""
     return await call_vue_method('webviewDrag', [from_uid, to_uid])
 
 async def handle_dialog(action, promptText=None):
-    """处理弹窗 (alert/confirm/prompt)"""
+    """Handle dialog (alert/confirm/prompt)"""
     return await call_vue_method('webviewHandleDialog', [action, promptText])
 
 async def hover(uid):
-    """悬停"""
+    """Hover over an element"""
     return await call_vue_method('webviewHover', [uid])
 
 async def press_key(key,uid):
-    """按键"""
+    """Press a key"""
     return await call_vue_method('webviewPressKey', [key, uid])
 
 # ------------------------------------------
@@ -231,27 +231,27 @@ async def press_key(key,uid):
 # ------------------------------------------
 
 async def list_pages():
-    """列出所有标签页"""
+    """List all tabs"""
     return await call_vue_method('getPagesInfo')
 
 async def new_page(url, timeout=0):
-    """新建标签页"""
+    """Create a new tab"""
     return await call_vue_method('openUrlInNewTab', [url])
 
 async def close_page(pageIdx):
-    """关闭标签页"""
+    """Close a tab"""
     return await call_vue_method('closeTabByIndex', [pageIdx])
 
 async def select_page(pageIdx, bringToFront=True):
-    """选择/切换标签页"""
+    """Select/switch to a tab"""
     return await call_vue_method('switchTabByIndex', [pageIdx])
 
 async def navigate_page(type="url", url=None, ignoreCache=False, timeout=0):
-    """页面导航"""
+    """Navigate the page"""
     return await call_vue_method('browserNavigate', [type, url, ignoreCache])
 
 async def wait_for(text, timeout=1000):
-    """等待文本出现"""
+    """Wait for text to appear"""
     return await call_vue_method('webviewWaitFor', [text, timeout])
 
 # ------------------------------------------
@@ -259,20 +259,20 @@ async def wait_for(text, timeout=1000):
 # ------------------------------------------
 
 async def evaluate_script(script_code, args=None):
-    """执行 JS (极强容错版)"""
-    
-    # 1. 清理字符串前后的空白和反引号（AI有时候会自作聪明加上 ```javascript 的Markdown代码块）
+    """Execute JS (with strong fault tolerance)"""
+
+    # 1. Clean up leading/trailing whitespace and backticks (AI sometimes adds ```javascript markdown code blocks)
     clean_code = script_code.strip().strip('`')
     if clean_code.startswith('javascript'):
         clean_code = clean_code[10:].strip()
 
-    # 2. 兜底容错：如果 AI 还是只输出了函数体（比如包含 return 但没写 function）
+    # 2. Fallback: If AI still only outputs function body (e.g. contains return but no function keyword)
     if not clean_code.startswith("function") and not clean_code.startswith("() =>") and not clean_code.startswith("async function"):
         print(f"[Agent Warning] AI forgot to wrap function, auto-wrapping it...")
-        # 帮它包一层标准函数
+        # Wrap it in a standard function layer
         clean_code = f"function() {{\n{clean_code}\n}}"
-        
-    # 3. 导航安全拦截：防止执行页面跳转后，原页面上下文丢失导致 WebSocket 断开
+
+    # 3. Navigation safety interception: prevent page navigation from losing context and disconnecting WebSocket
     if "submit()" in clean_code or "location" in clean_code:
         safe_code = f"""
         function() {{
@@ -283,22 +283,22 @@ async def evaluate_script(script_code, args=None):
         }}
         """
         return await call_vue_method('executeInActiveWebview', [safe_code, args or []])
-    
-    # 4. 正常执行
+
+    # 4. Normal execution
     return await call_vue_method('executeInActiveWebview', [clean_code, args or []])
 
 async def take_screenshot(fullPage=False, uid=None):
     """
-    截图
-    Vue 端已将图片保存到 uploaded_files 目录，并返回了 URL。
+    Take a screenshot
+    Vue side has already saved the image to uploaded_files directory and returned the URL.
     """
-    # 直接调用，返回值就是 URL (例如: http://127.0.0.1:3456/uploaded_files/xxx.jpg)
+    # Direct call, return value is the URL (e.g.: http://127.0.0.1:3456/uploaded_files/xxx.jpg)
     result = await call_vue_method('captureWebviewScreenshot', [fullPage, uid])
-    
-    # 简单的错误检查
+
+    # Simple error checking
     if not result or result.startswith("Error") or result.startswith("Screenshot Error"):
         return f"Failed to capture screenshot: {result}"
-        
+
     return f"Screenshot saved to {result}"
 
 # ==========================================

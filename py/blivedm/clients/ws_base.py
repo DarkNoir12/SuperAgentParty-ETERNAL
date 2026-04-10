@@ -57,7 +57,7 @@ class Operation(enum.IntEnum):
     REGISTER_REPLY = 15
     UNREGISTER = 16
     UNREGISTER_REPLY = 17
-    # B站业务自定义OP
+    # Bilibili custom OP
     # MinBusinessOp = 1000
     # MaxBusinessOp = 10000
 
@@ -69,11 +69,11 @@ class AuthReplyCode(enum.IntEnum):
 
 
 class InitError(Exception):
-    """初始化失败"""
+    """Initialization failed"""
 
 
 class AuthError(Exception):
-    """认证失败"""
+    """Authentication failed"""
 
 
 DEFAULT_RECONNECT_POLICY = utils.make_constant_retry_policy(1)
@@ -81,10 +81,10 @@ DEFAULT_RECONNECT_POLICY = utils.make_constant_retry_policy(1)
 
 class WebSocketClientBase:
     """
-    基于WebSocket的客户端
+    Client based on WebSocket
 
-    :param session: cookie、连接池
-    :param heartbeat_interval: 发送心跳包的间隔时间（秒）
+    :param session: cookie, connection pool
+    :param heartbeat_interval: interval for sending heartbeat packets (seconds)
     """
 
     def __init__(
@@ -104,57 +104,59 @@ class WebSocketClientBase:
 
         self._need_init_room = True
         self._handler: Optional[handlers.HandlerInterface] = None
-        """消息处理器"""
+        """Message handler"""
         self._get_reconnect_interval: Callable[[int, int], float] = DEFAULT_RECONNECT_POLICY
-        """重连间隔时间增长策略"""
+        """Reconnection interval growth strategy"""
 
-        # 在调用init_room后初始化的字段
+        # Fields initialized after calling init_room
         self._room_id: Optional[int] = None
 
-        # 在运行时初始化的字段
+        # Fields initialized at runtime
         self._websocket: Optional[aiohttp.ClientWebSocketResponse] = None
-        """WebSocket连接"""
+        """WebSocket connection"""
         self._network_future: Optional[asyncio.Future] = None
-        """网络协程的future"""
+        """Network coroutine future"""
         self._heartbeat_timer_handle: Optional[asyncio.TimerHandle] = None
-        """发心跳包定时器的handle"""
+        """Handle for heartbeat packet timer"""
 
     @property
     def is_running(self) -> bool:
         """
-        本客户端正在运行，注意调用stop后还没完全停止也算正在运行
+        Whether this client is running. Note: still considered running after calling stop but before fully stopped
         """
         return self._network_future is not None
 
     @property
     def room_id(self) -> Optional[int]:
         """
-        房间ID，调用init_room后初始化
+        Room ID, initialized after calling init_room
         """
         return self._room_id
 
     def set_handler(self, handler: Optional['handlers.HandlerInterface']):
         """
-        设置消息处理器
+        Set message handler
 
-        注意消息处理器和网络协程运行在同一个协程，如果处理消息耗时太长会阻塞接收消息。如果是CPU密集型的任务，建议将消息推到线程池处理；
-        如果是IO密集型的任务，应该使用async函数，并且在handler里使用create_task创建新的协程
+        Note: the message handler runs in the same coroutine as the network coroutine. If processing messages
+        takes too long, it will block message reception. For CPU-intensive tasks, it is recommended to push
+        messages to a thread pool; for IO-intensive tasks, use async functions and create_task in the handler.
 
-        :param handler: 消息处理器
+        :param handler: message handler
         """
         self._handler = handler
 
     def set_reconnect_policy(self, get_reconnect_interval: Callable[[int, int], float]):
         """
-        设置重连间隔时间增长策略
+        Set reconnection interval growth strategy
 
-        :param get_reconnect_interval: 一个可调用对象，输入重试次数 (retry_count, total_retry_count)，返回间隔时间
+        :param get_reconnect_interval: a callable that takes retry counts (retry_count, total_retry_count)
+            and returns the interval time
         """
         self._get_reconnect_interval = get_reconnect_interval
 
     def start(self):
         """
-        启动本客户端
+        Start this client
         """
         if self.is_running:
             logger.warning('room=%s client is running, cannot start() again', self.room_id)
@@ -164,7 +166,7 @@ class WebSocketClientBase:
 
     def stop(self):
         """
-        停止本客户端
+        Stop this client
         """
         if not self.is_running:
             logger.warning('room=%s client is stopped, cannot stop() again', self.room_id)
@@ -174,7 +176,7 @@ class WebSocketClientBase:
 
     async def stop_and_close(self):
         """
-        便利函数，停止本客户端并释放本客户端的资源，调用后本客户端将不可用
+        Convenience function to stop this client and release its resources; after calling, this client will be unusable
         """
         if self.is_running:
             self.stop()
@@ -183,7 +185,7 @@ class WebSocketClientBase:
 
     async def join(self):
         """
-        等待本客户端停止
+        Wait for this client to stop
         """
         if not self.is_running:
             logger.warning('room=%s client is stopped, cannot join()', self.room_id)
@@ -193,31 +195,31 @@ class WebSocketClientBase:
 
     async def close(self):
         """
-        释放本客户端的资源，调用后本客户端将不可用
+        Release resources of this client; after calling, this client will be unusable
         """
         if self.is_running:
             logger.warning('room=%s is calling close(), but client is running', self.room_id)
 
-        # 如果session是自己创建的则关闭session
+        # Close session if it was created by this instance
         if self._own_session:
             await self._session.close()
 
     async def init_room(self) -> bool:
         """
-        初始化连接房间需要的字段
+        Initialize fields needed for connecting to the room
 
-        :return: True代表没有降级，如果需要降级后还可用，重载这个函数返回True
+        :return: True means no downgrade was needed; if you need it to work after downgrade, override this function and return True
         """
         raise NotImplementedError
 
     @staticmethod
     def _make_packet(data: Union[dict, str, bytes], operation: int) -> bytes:
         """
-        创建一个要发送给服务器的包
+        Create a packet to send to the server
 
-        :param data: 包体JSON数据
-        :param operation: 操作码，见Operation
-        :return: 整个包的数据
+        :param data: packet body JSON data
+        :param operation: operation code, see Operation
+        :return: the entire packet data
         """
         if isinstance(data, dict):
             body = json.dumps(data).encode('utf-8')
@@ -236,13 +238,13 @@ class WebSocketClientBase:
 
     async def _network_coroutine_wrapper(self):
         """
-        负责处理网络协程的异常，网络协程具体逻辑在_network_coroutine里
+        Responsible for handling exceptions in the network coroutine. The actual logic is in _network_coroutine.
         """
         exc = None
         try:
             await self._network_coroutine()
         except asyncio.CancelledError:
-            # 正常停止
+            # Normal stop
             pass
         except Exception as e:
             logger.exception('room=%s _network_coroutine() finished with exception:', self.room_id)
@@ -256,43 +258,43 @@ class WebSocketClientBase:
 
     async def _network_coroutine(self):
         """
-        网络协程，负责连接服务器、接收消息、解包
+        Network coroutine: responsible for connecting to the server, receiving messages, and unpacking
         """
-        # retry_count在连接成功后会重置为0，total_retry_count不会
+        # retry_count is reset to 0 on successful connection, total_retry_count is not
         retry_count = 0
         total_retry_count = 0
         while True:
             try:
                 await self._on_before_ws_connect(retry_count)
 
-                # 连接
+                # Connect
                 async with self._session.ws_connect(
                     self._get_ws_url(retry_count),
-                    headers={'User-Agent': utils.USER_AGENT},  # web端的token也会签名UA
+                    headers={'User-Agent': utils.USER_AGENT},  # Web token also signs UA
                     receive_timeout=self._heartbeat_interval + 5,
                 ) as websocket:
                     self._websocket = websocket
                     await self._on_ws_connect()
 
-                    # 处理消息
+                    # Process messages
                     message: aiohttp.WSMessage
                     async for message in websocket:
                         await self._on_ws_message(message)
-                        # 至少成功处理1条消息
+                        # At least 1 message successfully processed
                         retry_count = 0
 
             except (aiohttp.ClientConnectionError, asyncio.TimeoutError):
-                # 掉线重连
+                # Disconnect and reconnect
                 pass
             except AuthError:
-                # 认证失败了，应该重新获取token再重连
+                # Authentication failed, need to get a new token before reconnecting
                 logger.exception('room=%d auth failed, trying init_room() again', self.room_id)
                 self._need_init_room = True
             finally:
                 self._websocket = None
                 await self._on_ws_close()
 
-            # 准备重连
+            # Prepare for reconnection
             retry_count += 1
             total_retry_count += 1
             logger.warning(
@@ -303,7 +305,7 @@ class WebSocketClientBase:
 
     async def _on_before_ws_connect(self, retry_count):
         """
-        在每次建立连接之前调用，可以用来初始化房间
+        Called before each connection attempt, can be used to initialize the room
         """
         if not self._need_init_room:
             return
@@ -314,13 +316,13 @@ class WebSocketClientBase:
 
     def _get_ws_url(self, retry_count) -> str:
         """
-        返回WebSocket连接的URL，可以在这里做故障转移和负载均衡
+        Return the WebSocket URL for connection, can be used for failover and load balancing
         """
         raise NotImplementedError
 
     async def _on_ws_connect(self):
         """
-        WebSocket连接成功
+        WebSocket connection successful
         """
         await self._send_auth()
         self._heartbeat_timer_handle = asyncio.get_running_loop().call_later(
@@ -329,7 +331,7 @@ class WebSocketClientBase:
 
     async def _on_ws_close(self):
         """
-        WebSocket连接断开
+        WebSocket connection disconnected
         """
         if self._heartbeat_timer_handle is not None:
             self._heartbeat_timer_handle.cancel()
@@ -337,13 +339,13 @@ class WebSocketClientBase:
 
     async def _send_auth(self):
         """
-        发送认证包
+        Send authentication packet
         """
         raise NotImplementedError
 
     def _on_send_heartbeat(self):
         """
-        定时发送心跳包的回调
+        Callback for periodically sending heartbeat packets
         """
         if self._websocket is None or self._websocket.closed:
             self._heartbeat_timer_handle = None
@@ -356,7 +358,7 @@ class WebSocketClientBase:
 
     async def _send_heartbeat(self):
         """
-        发送心跳包
+        Send heartbeat packet
         """
         if self._websocket is None or self._websocket.closed:
             return
@@ -370,9 +372,9 @@ class WebSocketClientBase:
 
     async def _on_ws_message(self, message: aiohttp.WSMessage):
         """
-        收到WebSocket消息
+        Received WebSocket message
 
-        :param message: WebSocket消息
+        :param message: WebSocket message
         """
         if message.type != aiohttp.WSMsgType.BINARY:
             logger.warning('room=%d unknown websocket message type=%s, data=%s', self.room_id,
@@ -382,16 +384,16 @@ class WebSocketClientBase:
         try:
             await self._parse_ws_message(message.data)
         except AuthError:
-            # 认证失败，让外层处理
+            # Authentication failed, let outer layer handle
             raise
         except Exception:  # noqa
             logger.exception('room=%d _parse_ws_message() error:', self.room_id)
 
     async def _parse_ws_message(self, data: bytes):
         """
-        解析WebSocket消息
+        Parse WebSocket message
 
-        :param data: WebSocket消息数据
+        :param data: WebSocket message data
         """
         offset = 0
         try:
@@ -401,7 +403,7 @@ class WebSocketClientBase:
             return
 
         if header.operation in (Operation.SEND_MSG_REPLY, Operation.AUTH_REPLY):
-            # 业务消息，可能有多个包一起发，需要分包
+            # Business messages, may have multiple packets sent together, need to split
             while True:
                 body = data[offset + header.raw_header_size: offset + header.pack_len]
                 await self._parse_business_message(header, body)
@@ -417,11 +419,11 @@ class WebSocketClientBase:
                     break
 
         elif header.operation == Operation.HEARTBEAT_REPLY:
-            # 服务器心跳包，前4字节是人气值，后面是客户端发的心跳包内容
-            # pack_len不包括客户端发的心跳包内容，不知道是不是服务器BUG
+            # Server heartbeat packet, first 4 bytes are popularity value, rest is heartbeat content sent by client
+            # pack_len doesn't include the heartbeat content sent by the client, not sure if it's a server bug
             body = data[offset + header.raw_header_size: offset + header.raw_header_size + 4]
             popularity = int.from_bytes(body, 'big')
-            # 自己造个消息当成业务消息处理
+            # Create a message ourselves and treat it as a business message
             body = {
                 'cmd': '_HEARTBEAT',
                 'data': {
@@ -431,27 +433,27 @@ class WebSocketClientBase:
             self._handle_command(body)
 
         else:
-            # 未知消息
+            # Unknown message
             body = data[offset + header.raw_header_size: offset + header.pack_len]
             logger.warning('room=%d unknown message operation=%d, header=%s, body=%s', self.room_id,
                            header.operation, header, body)
 
     async def _parse_business_message(self, header: HeaderTuple, body: bytes):
         """
-        解析业务消息
+        Parse business message
         """
         if header.operation == Operation.SEND_MSG_REPLY:
-            # 业务消息
+            # Business message
             if header.ver == ProtoVer.BROTLI:
-                # 压缩过的先解压，为了避免阻塞网络线程，放在其他线程执行
+                # Compressed, decompress first. To avoid blocking network thread, execute in another thread
                 body = await asyncio.get_running_loop().run_in_executor(None, brotli.decompress, body)
                 await self._parse_ws_message(body)
             elif header.ver == ProtoVer.DEFLATE:
-                # web端已经不用zlib压缩了，但是开放平台会用
+                # Web no longer uses zlib compression, but open platform does
                 body = await asyncio.get_running_loop().run_in_executor(None, zlib.decompress, body)
                 await self._parse_ws_message(body)
             elif header.ver == ProtoVer.NORMAL:
-                # 没压缩过的直接反序列化，因为有万恶的GIL，这里不能并行避免阻塞
+                # Uncompressed, directly deserialize. Due to the GIL, cannot parallelize here to avoid blocking
                 if len(body) != 0:
                     try:
                         body = json.loads(body.decode('utf-8'))
@@ -460,35 +462,37 @@ class WebSocketClientBase:
                         logger.error('room=%d, body=%s', self.room_id, body)
                         raise
             else:
-                # 未知格式
+                # Unknown format
                 logger.warning('room=%d unknown protocol version=%d, header=%s, body=%s', self.room_id,
                                header.ver, header, body)
 
         elif header.operation == Operation.AUTH_REPLY:
-            # 认证响应
+            # Authentication response
             body = json.loads(body.decode('utf-8'))
             if body['code'] != AuthReplyCode.OK:
                 raise AuthError(f"auth reply error, code={body['code']}, body={body}")
             await self._websocket.send_bytes(self._make_packet({}, Operation.HEARTBEAT))
 
         else:
-            # 未知消息
+            # Unknown message
             logger.warning('room=%d unknown message operation=%d, header=%s, body=%s', self.room_id,
                            header.operation, header, body)
 
     def _handle_command(self, command: dict):
         """
-        处理业务消息
+        Process business message
 
-        :param command: 业务消息
+        :param command: business message
         """
         if self._handler is None:
             return
         try:
-            # 为什么不做成异步的：
-            # 1. 为了保持处理消息的顺序，这里不使用call_soon、create_task等方法延迟处理
-            # 2. 如果支持handle使用async函数，用户可能会在里面处理耗时很长的异步操作，导致网络协程阻塞
-            # 这里做成同步的，强制用户使用create_task或消息队列处理异步操作，这样就不会阻塞网络协程
+            # Why not make it async:
+            # 1. To maintain the order of message processing, methods like call_soon, create_task are not used here
+            # 2. If handle supports async functions, users might put long-running async operations inside,
+            #    which would block the network coroutine
+            # By keeping it synchronous, users are forced to use create_task or message queues for async operations,
+            # thus not blocking the network coroutine
             self._handler.handle(self, command)
         except Exception as e:
             logger.exception('room=%d _handle_command() failed, command=%s', self.room_id, command, exc_info=e)

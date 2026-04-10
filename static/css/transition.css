@@ -1,4 +1,4 @@
-/* 页面加载过渡效果 */
+/* Page loading transition effect */
 body {
   opacity: 0;
   transition: opacity 0.3s ease-in-out;
@@ -8,7 +8,7 @@ body.content-loaded {
   opacity: 1;
 }
 
-/* 确保在加载过程中不显示内容 */
+/* Ensure content is hidden during loading */
 .main-container {
   visibility: hidden;
 }
@@ -17,10 +17,15 @@ body.content-loaded .main-container {
   visibility: visible;
 }
 
-/* 添加淡入效果 */
+/* Add fade-in effect */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 body.content-loaded #app {

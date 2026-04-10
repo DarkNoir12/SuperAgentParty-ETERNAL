@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from py.behavior_engine import BehaviorItem, BehaviorSettings,global_behavior_engine
 from py.get_setting import convert_to_opus_simple, get_port, load_settings
 
-# ------------------ 配置模型 ------------------
+# ------------------ Config Model ------------------
 class DiscordBotConfig(BaseModel):
     token: str
     llm_model: str = "super-model"
@@ -27,13 +27,13 @@ class DiscordBotConfig(BaseModel):
     reasoning_visible: bool = False
     quick_restart: bool = True
     enable_tts: bool = True
-    wakeWord: str              # 唤醒词
-    # --- 新增：行为规则设置 ---
+    wakeWord: str              # Wake word
+    # --- New: Behavior rule settings ---
     behaviorSettings: Optional[BehaviorSettings] = None
-    # Discord 特定的推送目标 ID 列表 (Channel IDs)
+    # Discord-specific push target ID list (Channel IDs)
     behaviorTargetChatIds: List[str] = Field(default_factory=list)
 
-# ------------------ 管理器 ------------------
+# ------------------ Manager ------------------
 class DiscordBotManager:
     def __init__(self):
         self.bot_thread: Optional[threading.Thread] = None
@@ -46,10 +46,10 @@ class DiscordBotManager:
         self._startup_error: Optional[str] = None
         self._stop_requested = False
 
-    # ---------- 生命周期 ----------
+    # ---------- Lifecycle ----------
     def start_bot(self, config: DiscordBotConfig):
         if self.is_running:
-            raise RuntimeError("Discord 机器人已在运行")
+            raise RuntimeError("Discord bot is already running")
         self.config = config
         self._shutdown_event.clear()
         self._ready_complete.clear()
@@ -63,23 +63,23 @@ class DiscordBotManager:
 
         if not self._ready_complete.wait(timeout=30):
             self.stop_bot()
-            raise RuntimeError("Discord 机器人就绪超时")
+            raise RuntimeError("Discord bot ready timeout")
 
         if self._startup_error:
             self.stop_bot()
-            raise RuntimeError(f"Discord 机器人启动失败: {self._startup_error}")
+            raise RuntimeError(f"Discord bot failed to start: {self._startup_error}")
 
     def _run_bot_thread(self, config: DiscordBotConfig):
-        """线程中运行 Discord 机器人"""
+        """Run Discord bot in a thread"""
         try:
-            # 1. 创建并设置循环
+            # 1. Create and set up event loop
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
 
-            # 2. 定义一个统一的异步启动函数
+            # 2. Define a unified async startup function
             async def main_startup():
                 try:
-                    # 在异步环境下加载设置，避免 asyncio.run 冲突
+                    # Load settings in async context to avoid asyncio.run conflicts
                     settings = await load_settings()
                     behavior_data = settings.get("behaviorSettings", {})
                     
@@ -89,35 +89,35 @@ class DiscordBotManager:
                         target_ids = discord_conf.get("behaviorTargetChatIds", [])
                     
                     if behavior_data:
-                        logging.info(f"Discord 线程: 同步行为配置... 目标频道数: {len(target_ids)}")
+                        logging.info(f"Discord thread: Syncing behavior config... Target channel count: {len(target_ids)}")
                         target_map = {"discord": target_ids}
                         global_behavior_engine.update_config(behavior_data, target_map)
                         
-                        # 更新本地配置对象
+                        # Update local config object
                         config.behaviorSettings = behavior_data if isinstance(behavior_data, BehaviorSettings) else BehaviorSettings(**behavior_data)
                         config.behaviorTargetChatIds = target_ids
 
-                    # 3. 实例化 Client
+                    # 3. Instantiate Client
                     self.bot_client = DiscordClient(config, manager=self)
 
-                    # 4. 启动行为引擎 (此时在运行的 loop 中，可以使用 create_task)
+                    # 4. Start behavior engine (can use create_task since loop is running)
                     if not global_behavior_engine.is_running:
                         asyncio.create_task(global_behavior_engine.start())
-                        logging.info("行为引擎已在 Discord 线程启动")
+                        logging.info("Behavior engine started in Discord thread")
 
-                    # 5. 启动 Discord Bot (这会阻塞直到 Bot 关闭)
+                    # 5. Start Discord Bot (blocks until Bot closes)
                     await self.bot_client.start(config.token)
                 except Exception as e:
                     self._startup_error = str(e)
-                    logging.exception("Discord 机器人启动过程中出错")
+                    logging.exception("Discord bot startup error")
 
-            # 运行异步主任务
+            # Run async main task
             self.loop.run_until_complete(main_startup())
 
         except Exception as e:
             if not self._stop_requested:
                 self._startup_error = str(e)
-                logging.exception("Discord 机器人线程异常")
+                logging.exception("Discord bot thread exception")
         finally:
             self._cleanup()
 
@@ -144,7 +144,7 @@ class DiscordBotManager:
                 self.loop.close()
             except Exception:
                 pass
-        logging.info("Discord 机器人资源已清理")
+        logging.info("Discord bot resources cleaned up")
 
     def get_status(self):
         return {
@@ -157,18 +157,18 @@ class DiscordBotManager:
 
     def update_behavior_config(self, config: DiscordBotConfig):
         """
-        热更新行为配置，不重启机器人
+        Hot-update behavior config without restarting the bot
         """
-        # 更新 Manager 的本地记录
+        # Update the manager's local record
         self.config = config
         
-        # 1. 更新 Client 内部的实时参数
+        # 1. Update real-time parameters in Client
         if self.bot_client:
             self.bot_client.config.llm_model = config.llm_model 
             self.bot_client.config.enable_tts = config.enable_tts
             self.bot_client.config.wakeWord = config.wakeWord
 
-        # 2. 更新全局行为引擎
+        # 2. Update global behavior engine
         target_map = {
             "discord": config.behaviorTargetChatIds
         }
@@ -177,7 +177,7 @@ class DiscordBotManager:
             config.behaviorSettings,
             target_map
         )
-        logging.info("Discord 机器人: 行为配置已热更新，计时器已重置")
+        logging.info("Discord bot: Behavior config hot-updated, timer reset")
 
 # ------------------ Discord Client ------------------
 class DiscordClient(discord.Client):
@@ -192,26 +192,26 @@ class DiscordClient(discord.Client):
         self.file_links: Dict[int, List[str]] = {}
         self._shutdown_requested = False
         
-        # --- 新增：注册到行为引擎 ---
-        # 告知引擎：Discord 平台的执行逻辑由本实例负责
+        # --- New: Register with behavior engine ---
+        # Inform the engine: This instance handles Discord platform execution logic
         global_behavior_engine.register_handler("discord", self.execute_behavior_event)
 
     async def on_ready(self):
         self.manager.is_running = True
         self.manager._ready_complete.set()
-        logging.info(f"✅ Discord 机器人已上线：{self.user}")
+        logging.info(f"Discord bot online: {self.user}")
 
     async def on_message(self, msg: discord.Message):
         if self._shutdown_requested or msg.author == self.user:
             return
-        # 统一入口
+        # Unified entry point
         try:
             await self._handle_message(msg)
         except Exception as e:
-            logging.exception("处理 Discord 消息失败")
-            await msg.channel.send(f"处理消息失败：{e}")
+            logging.exception("Failed to process Discord message")
+            await msg.channel.send(f"Failed to process message: {e}")
 
-    # ---------- 消息主处理 ----------
+    # ---------- Main message handler ----------
     async def _handle_message(self, msg: discord.Message):
         cid = msg.channel.id
         if cid not in self.memory:
@@ -219,14 +219,14 @@ class DiscordClient(discord.Client):
             self.async_tools[cid] = []
             self.file_links[cid] = []
 
-        # --- 新增：上报活跃状态到引擎，用于无输入检测 ---
+        # --- New: Report activity to engine for no-input detection ---
         global_behavior_engine.report_activity("discord", str(cid))
 
-        # 1. 指令处理
+        # 1. Command processing
         if msg.content:
             content_strip = msg.content.strip()
             
-            # [新增] /id 指令：获取当前频道 ID
+            # [New] /id command: Get current channel ID
             if content_strip.lower() == "/id":
                 info_msg = (
                     f"🤖 **Discord Session Information Identified Successfully**\n\n"
@@ -236,23 +236,23 @@ class DiscordClient(discord.Client):
                 await msg.reply(info_msg)
                 return
 
-            # 快速重启
+            # Quick restart
             if self.config.quick_restart:
                 if content_strip in {"/重启", "/restart"}:
                     self.memory[cid].clear()
-                    await msg.reply("对话记录已重置。")
+                    await msg.reply("Conversation history has been reset.")
                     return
 
-        # 2. 拼装用户内容
+        # 2. Assemble user content
         user_content = []
         user_text = ""
         has_media = False
 
-        # 2.1 文本
+        # 2.1 Text
         if msg.content:
             user_text = msg.content
 
-        # 2.2 图片
+        # 2.2 Images
         for att in msg.attachments:
             if att.content_type and att.content_type.startswith("image"):
                 b64data = base64.b64encode(await att.read()).decode()
@@ -262,19 +262,19 @@ class DiscordClient(discord.Client):
                 })
                 has_media = True
 
-        # 2.3 语音
+        # 2.3 Voice
         for att in msg.attachments:
             if att.content_type and att.content_type.startswith("audio"):
                 audio_bytes = await att.read()
                 asr_text = await self._transcribe_audio(audio_bytes, att.filename)
                 if asr_text:
-                    user_text += f"\n[语音转写] {asr_text}"
+                    user_text += f"\n[Voice Transcription] {asr_text}"
                 else:
-                    user_text += "\n[语音转写失败]"
+                    user_text += "\n[Voice Transcription Failed]"
         
         if self.config.wakeWord:
             if self.config.wakeWord not in user_text:
-                logging.info(f"未检测到唤醒词: {self.config.wakeWord}")
+                logging.info(f"Wake word not detected: {self.config.wakeWord}")
                 return
 
         if has_media and user_text:
@@ -284,7 +284,7 @@ class DiscordClient(discord.Client):
 
         self.memory[cid].append({"role": "user", "content": user_content or user_text})
 
-        # 3. 请求 LLM (后续逻辑保持不变...)
+        # 3. Request LLM (subsequent logic unchanged...)
         settings = await load_settings()
         client = AsyncOpenAI(api_key="super-secret-key", base_url=f"http://127.0.0.1:{get_port()}/v1")
 
@@ -303,11 +303,11 @@ class DiscordClient(discord.Client):
                 },
             )
         except Exception as e:
-            logging.warning(f"LLM 请求失败: {e}")
-            await msg.channel.send("LLM 响应超时，请稍后再试。")
+            logging.warning(f"LLM request failed: {e}")
+            await msg.channel.send("LLM response timeout, please try again later.")
             return
 
-        # 4. 流式解析 (省略已有代码)
+        # 4. Streaming parsing (existing code omitted)
         state = {
             "text_buffer": "", 
             "image_buffer": "", 
@@ -379,31 +379,31 @@ class DiscordClient(discord.Client):
                 final_audio, is_opus = await asyncio.to_thread(convert_to_opus_simple, raw_audio_bytes)
                 await self._send_omni_voice(msg, final_audio, is_opus)
                 has_omni_audio = True
-            except Exception as e: logging.error(f"Omni 音频处理失败: {e}")
+            except Exception as e: logging.error(f"Omni audio processing failed: {e}")
         full_content = "".join(full_response)
         if self.config.enable_tts and not has_omni_audio: await self._send_voice(msg, full_content)
         self.memory[cid].append({"role": "assistant", "content": full_content})
         if self.config.memory_limit > 0:
             while len(self.memory[cid]) > self.config.memory_limit * 2: self.memory[cid].pop(0)
     
-    # [新增] 发送 Omni 语音
+    # [New] Send Omni voice
     async def _send_omni_voice(self, msg: discord.Message, audio_data: bytes, is_opus: bool):
-        """发送 Omni 模型生成的音频文件"""
+        """Send audio file generated by Omni model"""
         try:
-            # Discord 没有专门的 Voice Message API，通常作为文件附件发送
+            # Discord has no dedicated Voice Message API, usually sent as file attachment
             ext = "opus" if is_opus else "wav"
             filename = f"voice.{ext}"
             
-            # 创建 Discord 文件对象
+            # Create Discord file object
             file = discord.File(io.BytesIO(audio_data), filename=filename)
             
-            # 回复消息
+            # Reply to message
             await msg.reply(file=file, mention_author=False)
-            logging.info(f"已发送 Omni 音频: {filename}")
+            logging.info(f"Omni audio sent: {filename}")
         except Exception as e:
-            logging.error(f"发送 Omni 音频异常: {e}")
+            logging.error(f"Omni audio send exception: {e}")
 
-    # ---------- 工具 ----------
+    # ---------- Utilities ----------
     async def _transcribe_audio(self, audio_bytes: bytes, filename: str) -> Optional[str]:
         form = aiohttp.FormData()
         form.add_field("audio", io.BytesIO(audio_bytes), filename=filename, content_type="audio/ogg")
@@ -416,9 +416,9 @@ class DiscordClient(discord.Client):
                 return res.get("text") if res.get("success") else None
 
     def _clean_text(self, text: str) -> str:
-        # 1. 移除 Markdown 图片 ![alt](url) -> 空
+        # 1. Remove Markdown images ![alt](url) -> empty
         text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
-        # 移除html标签
+        # Remove HTML tags
         text = re.sub(r'<.*?>', '', text)
         return text.strip()
 
@@ -465,12 +465,12 @@ class DiscordClient(discord.Client):
             "ttsSettings": tts_settings,
             "index": index,
             "mobile_optimized": True,  
-            "format": "opus"           # 明确请求opus格式
+            "format": "opus"           # Explicitly request opus format
         }
         async with aiohttp.ClientSession() as s:
             async with s.post(f"http://127.0.0.1:{get_port()}/tts", json=payload) as r:
                 if r.status != 200:
-                    await msg.channel.send("语音生成失败")
+                    await msg.channel.send("Voice generation failed")
                     return
                 opus = await r.read()
                 file = discord.File(io.BytesIO(opus), filename="voice.opus")
@@ -481,33 +481,33 @@ class DiscordClient(discord.Client):
         await super().close()
 
     def _extract_images(self, state: Dict[str, Any]):
-        """从缓冲区提取 markdown 图片链接"""
+        """Extract markdown image links from buffer"""
         buffer = state["image_buffer"]
         pattern = r'!\[.*?\]\((https?://[^\s)]+)'
         for m in re.finditer(pattern, buffer):
             state["image_cache"].append(m.group(1))
 
     async def _send_image(self, msg: discord.Message, img_url: str):
-        """下载并发送图片到当前频道"""
+        """Download and send image to current channel"""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(img_url) as resp:
                     if resp.status != 200:
-                        logging.warning(f"下载图片失败: {img_url}")
+                        logging.warning(f"Failed to download image: {img_url}")
                         return
                     data = await resp.read()
-                    ext = img_url.split("?")[0].split(".")[-1][:4]  # 简单取后缀
+                    ext = img_url.split("?")[0].split(".")[-1][:4]  # Simply extract suffix
                     ext = ext if ext.lower() in {"png", "jpg", "jpeg", "gif", "webp"} else "png"
                     file = discord.File(io.BytesIO(data), filename=f"image.{ext}")
                     await msg.channel.send(file=file)
         except Exception as e:
-            logging.exception(f"发送图片失败: {img_url}")
+            logging.exception(f"Failed to send image: {img_url}")
 
     async def execute_behavior_event(self, chat_id: str, behavior_item: BehaviorItem):
         """
-        回调函数：响应行为引擎的指令
+        Callback function: Respond to behavior engine commands
         """
-        logging.info(f"[DiscordClient] 行为触发! 目标: {chat_id}, 动作类型: {behavior_item.action.type}")
+        logging.info(f"[DiscordClient] Behavior triggered! Target: {chat_id}, Action type: {behavior_item.action.type}")
         
         prompt_content = await self._resolve_behavior_prompt(behavior_item)
         if not prompt_content: return
@@ -516,12 +516,12 @@ class DiscordClient(discord.Client):
         if cid not in self.memory:
             self.memory[cid] = []
         
-        # 构造上下文：历史记录 + 系统指令
+        # Construct context: history + system instruction
         messages = self.memory[cid].copy()
         system_instruction = f"[system]: {prompt_content}"
         messages.append({"role": "user", "content": system_instruction})
         
-        # 同步到内存，维持逻辑连贯
+        # Sync to memory, maintain logical continuity
         self.memory[cid].append({"role": "user", "content": system_instruction})
 
         try:
@@ -530,7 +530,7 @@ class DiscordClient(discord.Client):
                 base_url=f"http://127.0.0.1:{get_port()}/v1"
             )
             
-            # 使用非流式请求处理主动行为，便于逻辑简化
+            # Use non-streaming request for proactive behavior, simplifying logic
             response = await client.chat.completions.create(
                 model=self.config.llm_model,
                 messages=messages,
@@ -545,22 +545,22 @@ class DiscordClient(discord.Client):
             if reply_content:
                 channel = self.get_channel(cid)
                 if channel:
-                    # 1. 发送文本
+                    # 1. Send text
                     await channel.send(reply_content)
                     self.memory[cid].append({"role": "assistant", "content": reply_content})
                     
-                    # 2. 如果开启了 TTS，则发送语音
+                    # 2. If TTS is enabled, send voice
                     if self.config.enable_tts:
-                        # 构造 MockMessage 以复用现有 TTS 函数
+                        # Construct MockMessage to reuse existing TTS function
                         class MockMsg:
                             def __init__(self, c): self.channel = c
                         await self._send_voice(MockMsg(channel), reply_content)
             
         except Exception as e:
-            logging.error(f"[DiscordClient] 执行行为 API 调用失败: {e}")   
+            logging.error(f"[DiscordClient] Behavior execution API call failed: {e}")   
 
     async def _resolve_behavior_prompt(self, behavior: BehaviorItem) -> str:
-        """解析行为配置，生成具体的 Prompt 指令"""
+        """Parse behavior config, generate specific Prompt instruction"""
         from py.random_topic import get_random_topics
         action = behavior.action
         
@@ -577,6 +577,6 @@ class DiscordClient(discord.Client):
                 idx = action.random.orderIndex
                 if idx >= len(events): idx = 0
                 selected = events[idx]
-                action.random.orderIndex = idx + 1 # 内存内更新
+                action.random.orderIndex = idx + 1 # In-memory update
                 return selected
         return None

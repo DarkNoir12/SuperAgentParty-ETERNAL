@@ -1,16 +1,41 @@
 <!doctype html>
 <html style="margin:0;padding:0;width:100%;height:100%;overflow:hidden;">
+
 <head>
-  <meta charset="utf-8"/>
-  <title>截图选区</title>
+  <meta charset="utf-8" />
+  <title>Screenshot Selection</title>
   <style>
-    html,body{margin:0;width:100vw;height:100vh;overflow:hidden;cursor:crosshair}
-    /* 唯一一层 canvas，其余什么都不画 */
-    #canvas{position:fixed;left:0;top:0;width:100%;height:100%;z-index:2;pointer-events:none}
-    /* 橙色边框 */
-    #box{position:absolute;border:2px solid #ff7b00;z-index:3;pointer-events:none;display:none}
+    html,
+    body {
+      margin: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      cursor: crosshair
+    }
+
+    /* Single canvas layer, everything else is empty */
+    #canvas {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none
+    }
+
+    /* Orange border */
+    #box {
+      position: absolute;
+      border: 2px solid #ff7b00;
+      z-index: 3;
+      pointer-events: none;
+      display: none
+    }
   </style>
 </head>
+
 <body>
   <canvas id="canvas"></canvas>
   <div id="box"></div>
@@ -31,7 +56,7 @@
 
     function drawMask() {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-      if (box.style.display === 'none') return   // 还没开始选
+      if (box.style.display === 'none') return   // Haven't started selection yet
 
       const x = parseInt(box.style.left)
       const y = parseInt(box.style.top)
@@ -40,11 +65,11 @@
 
       ctx.fillStyle = 'rgba(0,0,0,.45)'
 
-      /* 反向填充：只画四条边，中间完全留空 */
-      ctx.fillRect(0, 0, canvas.width, y)                    // 上边
-      ctx.fillRect(0, y + h, canvas.width, canvas.height - y - h) // 下边
-      ctx.fillRect(0, y, x, h)                               // 左边
-      ctx.fillRect(x + w, y, canvas.width - x - w, h)        // 右边
+      /* Inverse fill: only draw four edges, leave the middle completely empty */
+      ctx.fillRect(0, 0, canvas.width, y)                    // Top
+      ctx.fillRect(0, y + h, canvas.width, canvas.height - y - h) // Bottom
+      ctx.fillRect(0, y, x, h)                               // Left
+      ctx.fillRect(x + w, y, canvas.width - x - w, h)        // Right
     }
 
     let startX, startY, down = false
@@ -93,4 +118,5 @@
     })
   </script>
 </body>
+
 </html>

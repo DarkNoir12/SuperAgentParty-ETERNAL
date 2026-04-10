@@ -24,7 +24,7 @@ async def pollinations_image(prompt: str, width=512, height=512, model="flux"):
     url = f"https://image.pollinations.ai/prompt/{prompt}?width={width}&height={height}&model={model}&nologo=true&enhance=true&private=true&safe=true"
     res_data = requests.get(url).content
     image_id = str(uuid.uuid4())
-    # 将图片保存到本地UPLOAD_FILES_DIR，文件名为image_id，返回本地文件路径
+    # Save the image to local UPLOAD_FILES_DIR with filename image_id, return local file path
     with open(f"{UPLOAD_FILES_DIR}/{image_id}.png", "wb") as f:
         f.write(res_data)
     return f"![image]({url})"
@@ -33,27 +33,27 @@ pollinations_image_tool = {
     "type": "function",
     "function": {
         "name": "pollinations_image",
-        "description": "通过英文prompt生成图片，并返回markdown格式的图片链接，你必须直接以原markdown格式发给用户，用户才能直接看到图片。\n当你需要发送图片时，请将图片的URL放在markdown的图片标签中，例如：\n\n![图片名](图片URL)\n\n，图片markdown必须另起并且独占一行！",
+        "description": "Generate images from English prompts and return a markdown image link. You must send the original markdown format to the user so they can see the image directly.\nWhen you need to send an image, place the image URL inside a markdown image tag, for example:\n\n![ImageName](ImageURL)\n\nThe image markdown must be on its own line and occupy a line by itself!",
         "parameters": {
             "type": "object",
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "需要生成图片的英文prompt，例如：A little girl in a red hat。你可以尽可能的丰富你的prompt，以获得更好的效果",
+                    "description": "English prompt for generating the image, for example: A little girl in a red hat. You can enrich your prompt as much as possible for better results.",
                 },
                 "width": {
                     "type": "number",
-                    "description": "图片宽度",
+                    "description": "Image width",
                     "default":512
                 },
                 "height": {
                     "type": "number",
-                    "description": "图片高度",
+                    "description": "Image height",
                     "default": 512
                 },
                 "model": {
                     "type": "string",
-                    "description": "使用的模型",
+                    "description": "Model to use",
                     "default": "flux",
                     "enum": ["flux", "turbo"],
                 }
@@ -92,14 +92,14 @@ async def openai_image(prompt: str, size="auto"):
             HOST = '127.0.0.1'
         PORT = get_port()
         image_id = str(uuid.uuid4())
-        # 将图片保存到本地UPLOAD_FILES_DIR，文件名为image_id，返回本地文件路径
+        # Save the image to local UPLOAD_FILES_DIR with filename image_id, return local file path
         with open(f"{UPLOAD_FILES_DIR}/{image_id}.png", "wb") as f:
             f.write(base64.b64decode(res))
         res = f"![image](http://{HOST}:{PORT}/uploaded_files/{image_id}.png)"
     else:
         res_data = requests.get(res_url).content
         image_id = str(uuid.uuid4())
-        # 将图片保存到本地UPLOAD_FILES_DIR，文件名为image_id，返回本地文件路径
+        # Save the image to local UPLOAD_FILES_DIR with filename image_id, return local file path
         with open(f"{UPLOAD_FILES_DIR}/{image_id}.png", "wb") as f:
             f.write(res_data)
     return res
@@ -108,18 +108,18 @@ openai_image_tool = {
     "type": "function",
     "function": {
         "name": "openai_image",
-        "description": "通过英文prompt生成图片，并返回markdown格式的图片链接，你必须直接以原markdown格式发给用户，用户才能直接看到图片。\n当你需要发送图片时，请将图片的URL放在markdown的图片标签中，例如：\n\n![图片名](图片URL)\n\n，图片markdown必须另起并且独占一行！",
+        "description": "Generate images from English prompts and return a markdown image link. You must send the original markdown format to the user so they can see the image directly.\nWhen you need to send an image, place the image URL inside a markdown image tag, for example:\n\n![ImageName](ImageURL)\n\nThe image markdown must be on its own line and occupy a line by itself!",
         "parameters": {
             "type": "object",
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "需要生成图片的英文prompt，例如：A little girl in a red hat。你可以尽可能的丰富你的prompt，以获得更好的效果",
+                    "description": "English prompt for generating the image, for example: A little girl in a red hat. You can enrich your prompt as much as possible for better results.",
                 },
                 "size": {
                     "type": "string",
-                    "description": "图片大小，默认为auto",
-                    "default": "auto", 
+                    "description": "Image size, defaults to auto",
+                    "default": "auto",
                     "enum": ["auto","1024x1024", "1536x1024", "1024x1536", "256x256", "512x512", "1792x1024", "1024x1792"],
                 }
             },
@@ -129,37 +129,37 @@ openai_image_tool = {
 }
 
 def process_image_content(text):
-    # 正则表达式匹配 ![]() 中的内容
+    # Regex to match content inside ![]()
     pattern = r'!\[.*?\]\((.*?)\)'
-    
+
     def replace_match(match):
         content = match.group(1)
-        
-        # 检查是否是 base64 数据
+
+        # Check if it is base64 data
         if content.startswith('data:image'):
-            # 提取 base64 部分（假设格式为 data:image/xxx;base64,实际数据）
+            # Extract base64 part (assumes format: data:image/xxx;base64,actual_data)
             base64_data = content.split(',', 1)[1]
             HOST = get_host()
             if HOST == '0.0.0.0':
                 HOST = '127.0.0.1'
             PORT = get_port()
             image_id = str(uuid.uuid4())
-            
-            # 确保上传目录存在
+
+            # Ensure upload directory exists
             os.makedirs(UPLOAD_FILES_DIR, exist_ok=True)
-            
-            # 保存图片到本地
+
+            # Save image to local disk
             file_path = f"{UPLOAD_FILES_DIR}/{image_id}.png"
             with open(file_path, "wb") as f:
                 f.write(base64.b64decode(base64_data))
-            
-            # 返回新的图片链接
+
+            # Return new image link
             return f"![image](http://{HOST}:{PORT}/uploaded_files/{image_id}.png)"
         else:
-            # 如果是普通 URL，直接返回原内容
+            # If it is a regular URL, return the original match
             return match.group(0)
-    
-    # 使用 re.sub 进行替换
+
+    # Use re.sub for replacement
     result = re.sub(pattern, replace_match, text)
     return result
 
@@ -206,17 +206,17 @@ openai_chat_image_tool = {
     "type": "function",
     "function": {
         "name": "openai_chat_image",
-        "description": "通过英文prompt生成图片或者图片编辑，并返回markdown格式的图片链接，你必须直接以原markdown格式发给用户，用户才能直接看到图片。\n当你需要发送图片时，请将图片的URL放在markdown的图片标签中，例如：\n\n![图片名](图片URL)\n\n，图片markdown必须另起并且独占一行！",
+        "description": "Generate or edit images from English prompts and return a markdown image link. You must send the original markdown format to the user so they can see the image directly.\nWhen you need to send an image, place the image URL inside a markdown image tag, for example:\n\n![ImageName](ImageURL)\n\nThe image markdown must be on its own line and occupy a line by itself!",
         "parameters": {
             "type": "object",
             "properties": {
                 "prompt": {
                     "type": "string",
-                    "description": "需要生成图片的英文prompt或者修改图片的prompt，例如：`A little girl in a red hat` 或者 `Change the girl's hat to white`。你可以尽可能的丰富你的prompt，以获得更好的效果",
+                    "description": "English prompt for generating or editing images, for example: `A little girl in a red hat` or `Change the girl's hat to white`. You can enrich your prompt as much as possible for better results.",
                 },
                 "img_url_list": {
                     "type": "array",
-                    "description": "执行图片编辑任务时的可选的字段，列表字段中每个元素都必须是图片URL，图片URL可以是用户上传的本地图片URL，格式类似于：http://127.0.0.1:3456/1.jpg ，也可以是一个公网上的图片URL",
+                    "description": "Optional field for image editing tasks. Each element in the list must be an image URL. URLs can be local files uploaded by the user, e.g., http://127.0.0.1:3456/1.jpg, or public image URLs.",
                 },
             },
             "required": ["prompt"],

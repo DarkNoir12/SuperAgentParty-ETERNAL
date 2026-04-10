@@ -24,7 +24,7 @@ async def auto_behavior(behaviorType="delay", time="00:00:00",prompt="",days=[],
                 },
                 "action": {
                     "type": "prompt",
-                    "prompt": "时间到了，"+prompt, 
+                    "prompt": "Time's up, "+prompt,
                     "random":{
                         "events":[""],
                         "type":"random",
@@ -40,21 +40,21 @@ async def auto_behavior(behaviorType="delay", time="00:00:00",prompt="",days=[],
                 "trigger": {
                     "type": "cycle",
                     "time":{
-                        "timeValue": "00:00:00", 
-                        "days": [] 
+                        "timeValue": "00:00:00",
+                        "days": []
                     },
                     "noInput":{
-                        "latency": 30, 
+                        "latency": 30,
                     },
                     "cycle":{
-                        "cycleValue": time, 
-                        "repeatNumber": repeatNumber, 
-                        "isInfiniteLoop": isInfiniteLoop, 
+                        "cycleValue": time,
+                        "repeatNumber": repeatNumber,
+                        "isInfiniteLoop": isInfiniteLoop,
                     }
                 },
                 "action": {
                     "type": "prompt",
-                    "prompt": "时间到了，"+prompt, 
+                    "prompt": "Time's up, "+prompt,
                     "random":{
                         "events":[""],
                         "type":"random",
@@ -71,26 +71,26 @@ auto_behavior_tool = {
     "type": "function",
     "function": {
         "name": "auto_behavior",
-        "description": "当用户需要你在特定时间或隔一段时间自动执行某些行为时，你可以使用这个工具。例如，你可以设置在每天的特定时间自动发送问候语，或者设置在特定时间之后自动执行某些任务。",
+        "description": "Use this tool when you need to automatically execute certain behaviors at a specific time or after a delay. For example, you can set up automatic greeting messages at a specific time every day, or set up automatic execution of certain tasks at a specific time.",
         "parameters": {
             "type": "object",
             "properties": {
                 "behaviorType": {
                     "type": "string",
-                    "description": "行为类型，可选值为time或delay；time表示在特定时间执行，例如：三点钟提醒我开会；delay表示隔一段时间执行的任务，例如：五分钟后提醒我开会",
+                    "description": "The behavior type, either 'time' or 'delay'; 'time' means execute at a specific time (e.g., remind me about a meeting at 3 o'clock), 'delay' means execute after a time interval (e.g., remind me about a meeting in 5 minutes)",
                     "enum": ["time", "delay"],
                 },
                 "time": {
                     "type": "string",
-                    "description": "时间，格式为HH:MM:SS，24小时制，time类型下表示在这个时间点执行，delay类型下表示隔多久时间执行",
+                    "description": "Time in HH:MM:SS format (24-hour). For 'time' type, it indicates execution at this time point. For 'delay' type, it indicates the interval before execution",
                 },
                 "prompt": {
                     "type": "string",
-                    "description": "任务描述，例如：请立刻提醒用户开会、请立刻向用户发送问候语",
+                    "description": "Task description, e.g., Please remind the user about the meeting immediately, Please send a greeting message to the user immediately",
                 },
                 "days": {
                     "type": "array",
-                    "description": "行为类型为time类型下表示在哪些天执行，例如：[1, 2]表示在周一和周二执行,[0]表示只有周日执行，[]表示不重复执行，[1, 2, 3, 4, 5, 6, 0]表示每天都执行",
+                    "description": "For 'time' type, indicates which days to execute. For example: [1, 2] means execute on Monday and Tuesday, [0] means only on Sunday, [] means no repetition, [1, 2, 3, 4, 5, 6, 0] means execute every day",
                     "items": {
                         "type": "number",
                         "enum": [0, 1, 2, 3, 4, 5, 6],
@@ -99,14 +99,14 @@ auto_behavior_tool = {
                 },
                 "repeatNumber": {
                     "type": "number",
-                    "description": "行为类型为delay类型下表示重复次数，例如：3表示重复3次，repeatNumber只能在1到100之间",
+                    "description": "For 'delay' type, indicates the number of repetitions. For example: 3 means repeat 3 times. repeatNumber can only be between 1 and 100",
                     "minimum": 1,
                     "maximum": 100,
                     "default": 1,
                 },
                 "isInfiniteLoop": {
                     "type": "boolean",
-                    "description": "行为类型为delay类型下表示是否无限循环，例如：True表示无限循环，False表示不循环",
+                    "description": "For 'delay' type, indicates whether to loop infinitely. For example: True means infinite loop, False means no looping",
                     "default": False,
                 }
             },

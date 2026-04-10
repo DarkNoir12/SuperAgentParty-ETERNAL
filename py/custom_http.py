@@ -1,7 +1,7 @@
 import aiohttp
 import json
 
-# 安全解析 JSON 的函数（用于 headers 是字符串的情况）
+# Safe JSON parsing function (for when headers is a string)
 def safe_json_loads(s):
     try:
         return json.loads(s)
@@ -9,22 +9,22 @@ def safe_json_loads(s):
         return {}
 
 async def fetch_custom_http(method, url, headers=None, body=None):
-    # 处理 headers
+    # Handle headers
     if headers is None or headers == "":
         headers = {}
     elif isinstance(headers, str):
         print(f'headers: {headers}')
         headers = safe_json_loads(headers)
 
-    # 自动处理 Content-Type，默认为 application/json
+    # Auto-handle Content-Type, default to application/json
     content_type = headers.get('Content-Type', 'application/json')
 
-    # 准备参数
+    # Prepare parameters
     kwargs = {
         'headers': headers,
     }
 
-    # 根据 Content-Type 决定使用 data 还是 json
+    # Decide whether to use data or json based on Content-Type
     if content_type == 'application/json':
         kwargs['json'] = body
     else:

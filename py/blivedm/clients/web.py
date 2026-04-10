@@ -43,22 +43,22 @@ class _WbiSigner:
         46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
         27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13
     ]
-    """wbi密码表"""
+    """WBI key table"""
     WBI_KEY_TTL = datetime.timedelta(hours=11, minutes=59, seconds=30)
 
     def __init__(self, session: aiohttp.ClientSession):
         self._session = session
 
         self._wbi_key = ''
-        """缓存的wbi鉴权口令"""
+        """Cached WBI authentication token"""
         self._refresh_future: Optional[Awaitable] = None
-        """用来避免同时刷新"""
+        """Used to avoid simultaneous refreshes"""
         self._last_refresh_time: Optional[datetime.datetime] = None
 
     @property
     def wbi_key(self):
         """
-        缓存的wbi鉴权口令
+        Cached WBI authentication token
         """
         return self._wbi_key
 
@@ -127,12 +127,12 @@ class _WbiSigner:
         wts = str(int(datetime.datetime.now().timestamp()))
         params_to_sign = {**params, 'wts': wts}
 
-        # 按key字典序排序
+        # Sort by key in dictionary order
         params_to_sign = {
             key: params_to_sign[key]
             for key in sorted(params_to_sign.keys())
         }
-        # 过滤一些字符
+        # Filter some characters
         for key, value in params_to_sign.items():
             value = ''.join(
                 ch
@@ -152,12 +152,12 @@ class _WbiSigner:
 
 class BLiveClient(ws_base.WebSocketClientBase):
     """
-    web端客户端
+    Web client
 
-    :param room_id: URL中的房间ID，可以用短ID
-    :param uid: B站用户ID，0表示未登录，None表示自动获取
-    :param session: cookie、连接池
-    :param heartbeat_interval: 发送心跳包的间隔时间（秒）
+    :param room_id: room ID from URL, can use short ID
+    :param uid: Bilibili user ID, 0 means not logged in, None means auto-detect
+    :param session: cookie, connection pool
+    :param heartbeat_interval: interval for sending heartbeat packets (seconds)
     """
 
     def __init__(
@@ -172,47 +172,47 @@ class BLiveClient(ws_base.WebSocketClientBase):
         self._wbi_signer = _get_wbi_signer(self._session)
 
         self._tmp_room_id = room_id
-        """用来init_room的临时房间ID，可以用短ID"""
+        """Temporary room ID for init_room, can use short ID"""
         self._uid = uid
 
-        # 在调用init_room后初始化的字段
+        # Fields initialized after calling init_room
         self._room_owner_uid: Optional[int] = None
-        """主播用户ID"""
+        """Streamer user ID"""
         self._host_server_list: Optional[List[dict]] = None
         """
-        弹幕服务器列表
+        Danmaku server list
 
         `[{host: "tx-bj4-live-comet-04.chat.bilibili.com", port: 2243, wss_port: 443, ws_port: 2244}, ...]`
         """
         self._host_server_token: Optional[str] = None
-        """连接弹幕服务器用的token"""
+        """Token for connecting to danmaku server"""
 
     @property
     def tmp_room_id(self) -> int:
         """
-        构造时传进来的room_id参数
+        The room_id parameter passed in during construction
         """
         return self._tmp_room_id
 
     @property
     def room_owner_uid(self) -> Optional[int]:
         """
-        主播用户ID，调用init_room后初始化
+        Streamer user ID, initialized after calling init_room
         """
         return self._room_owner_uid
 
     @property
     def uid(self) -> Optional[int]:
         """
-        当前登录的用户ID，未登录则为0，调用init_room后初始化
+        Currently logged-in user ID, 0 if not logged in, initialized after calling init_room
         """
         return self._uid
 
     async def init_room(self):
         """
-        初始化连接房间需要的字段
+        Initialize fields needed for connecting to the room
 
-        :return: True代表没有降级，如果需要降级后还可用，重载这个函数返回True
+        :return: True means no downgrade was needed; if you need it to work after downgrade, override this function and return True
         """
         if self._uid is None:
             if not await self._init_uid():
@@ -226,13 +226,13 @@ class BLiveClient(ws_base.WebSocketClientBase):
         res = True
         if not await self._init_room_id_and_owner():
             res = False
-            # 失败了则降级
+            # Downgrade on failure
             self._room_id = self._tmp_room_id
             self._room_owner_uid = 0
 
         if not await self._init_host_server():
             res = False
-            # 失败了则降级
+            # Downgrade on failure
             self._host_server_list = DEFAULT_DANMAKU_SERVER_LIST
             self._host_server_token = None
         return res
@@ -241,7 +241,7 @@ class BLiveClient(ws_base.WebSocketClientBase):
         cookies = self._session.cookie_jar.filter_cookies(yarl.URL(UID_INIT_URL))
         sessdata_cookie = cookies.get('SESSDATA', None)
         if sessdata_cookie is None or sessdata_cookie.value == '':
-            # cookie都没有，不用请求了
+            # No cookies, no need to proceed
             self._uid = 0
             return True
 
@@ -257,7 +257,7 @@ class BLiveClient(ws_base.WebSocketClientBase):
                 data = await res.json()
                 if data['code'] != 0:
                     if data['code'] == -101:
-                        # 未登录
+                        # Not logged in
                         self._uid = 0
                         return True
                     logger.warning('room=%d _init_uid() failed, message=%s', self._tmp_room_id,
@@ -266,7 +266,7 @@ class BLiveClient(ws_base.WebSocketClientBase):
 
                 data = data['data']
                 if not data['isLogin']:
-                    # 未登录
+                    # Not logged in
                     self._uid = 0
                 else:
                     self._uid = data['mid']
@@ -328,7 +328,7 @@ class BLiveClient(ws_base.WebSocketClientBase):
     async def _init_host_server(self):
         if self._wbi_signer.need_refresh_wbi_key:
             await self._wbi_signer.refresh_wbi_key()
-            # 如果没刷新成功先用旧的key
+            # If refresh failed, use the old key first
             if self._wbi_signer.wbi_key == '':
                 logger.exception('room=%d _init_host_server() failed: no wbi key', self._room_id)
                 return False
@@ -349,7 +349,7 @@ class BLiveClient(ws_base.WebSocketClientBase):
                 data = await res.json()
                 if data['code'] != 0:
                     if data['code'] == -352:
-                        # wbi签名错误
+                        # WBI signature error
                         self._wbi_signer.reset()
                     logger.warning('room=%d _init_host_server() failed, message=%s', self._room_id, data['message'])
                     return False
@@ -370,9 +370,9 @@ class BLiveClient(ws_base.WebSocketClientBase):
 
     async def _on_before_ws_connect(self, retry_count):
         """
-        在每次建立连接之前调用，可以用来初始化房间
+        Called before each connection attempt, can be used to initialize the room
         """
-        # 重连次数太多则重新init_room，保险
+        # Re-init_room if too many reconnection attempts, as a safeguard
         reinit_period = max(3, len(self._host_server_list or ()))
         if retry_count > 0 and retry_count % reinit_period == 0:
             self._need_init_room = True
@@ -380,14 +380,14 @@ class BLiveClient(ws_base.WebSocketClientBase):
 
     def _get_ws_url(self, retry_count) -> str:
         """
-        返回WebSocket连接的URL，可以在这里做故障转移和负载均衡
+        Return the WebSocket URL for connection, can be used for failover and load balancing
         """
         host_server = self._host_server_list[retry_count % len(self._host_server_list)]
         return f"wss://{host_server['host']}:{host_server['wss_port']}/sub"
 
     async def _send_auth(self):
         """
-        发送认证包
+        Send authentication packet
         """
         auth_params = {
             'uid': self._uid,

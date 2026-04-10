@@ -3,12 +3,12 @@ import os
 from pathlib import Path
 
 def _get_project_config_path(cwd: str) -> Path:
-    """获取 .party/config.json 的路径"""
+    """Get path to .party/config.json"""
     return Path(cwd) / ".party" / "config.json"
 
 def is_tool_allowed_by_project_config(cwd: str, tool_name: str) -> bool:
     """
-    检查项目级配置文件中是否已允许该工具
+    Check if the tool is allowed by project-level configuration
     """
     if not cwd:
         return False
@@ -28,7 +28,7 @@ def is_tool_allowed_by_project_config(cwd: str, tool_name: str) -> bool:
 
 def add_tool_to_project_config(cwd: str, tool_name: str):
     """
-    将工具添加到项目级允许列表中 (创建 .party/config.json)
+    Add tool to the project-level allowed list (creates .party/config.json)
     """
     if not cwd:
         return
@@ -36,10 +36,10 @@ def add_tool_to_project_config(cwd: str, tool_name: str):
     config_path = _get_project_config_path(cwd)
     party_dir = config_path.parent
     
-    # 1. 确保文件夹存在
+    # 1. Ensure folder exists
     if not party_dir.exists():
         party_dir.mkdir(parents=True, exist_ok=True)
-        # 在 Windows 上隐藏文件夹 (可选)
+        # Hide folder on Windows (optional)
         try:
             import ctypes
             FILE_ATTRIBUTE_HIDDEN = 0x02
@@ -47,7 +47,7 @@ def add_tool_to_project_config(cwd: str, tool_name: str):
         except:
             pass
 
-    # 2. 读取现有配置
+    # 2. Read existing config
     data = {"allowed_tools": []}
     if config_path.exists():
         try:
@@ -56,7 +56,7 @@ def add_tool_to_project_config(cwd: str, tool_name: str):
         except:
             pass
             
-    # 3. 更新并写入
+    # 3. Update and save
     if tool_name not in data.get("allowed_tools", []):
         if "allowed_tools" not in data:
             data["allowed_tools"] = []

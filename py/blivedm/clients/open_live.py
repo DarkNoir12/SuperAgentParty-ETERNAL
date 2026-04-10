@@ -25,17 +25,17 @@ END_URL = 'https://live-open.biliapi.com/v2/app/end'
 
 class OpenLiveClient(ws_base.WebSocketClientBase):
     """
-    开放平台客户端
+    Open platform client
 
-    文档参考：https://open-live.bilibili.com/document/
+    Documentation reference: https://open-live.bilibili.com/document/
 
-    :param access_key_id: 在开放平台申请的access_key_id
-    :param access_key_secret: 在开放平台申请的access_key_secret
-    :param app_id: 在开放平台创建的项目ID
-    :param room_owner_auth_code: 主播身份码
-    :param session: cookie、连接池
-    :param heartbeat_interval: 发送连接心跳包的间隔时间（秒）
-    :param game_heartbeat_interval: 发送项目心跳包的间隔时间（秒）
+    :param access_key_id: access_key_id applied on the open platform
+    :param access_key_secret: access_key_secret applied on the open platform
+    :param app_id: project ID created on the open platform
+    :param room_owner_auth_code: streamer auth code
+    :param session: cookie, connection pool
+    :param heartbeat_interval: interval for sending connection heartbeat packets (seconds)
+    :param game_heartbeat_interval: interval for sending project heartbeat packets (seconds)
     """
 
     def __init__(
@@ -57,60 +57,60 @@ class OpenLiveClient(ws_base.WebSocketClientBase):
         self._room_owner_auth_code = room_owner_auth_code
         self._game_heartbeat_interval = game_heartbeat_interval
 
-        # 在调用init_room后初始化的字段
+        # Fields initialized after calling init_room
         self._room_owner_uid: Optional[int] = None
-        """主播用户ID"""
+        """Streamer user ID"""
         self._room_owner_open_id: Optional[str] = None
-        """主播Open ID"""
+        """Streamer Open ID"""
         self._host_server_url_list: Optional[List[str]] = []
-        """弹幕服务器URL列表"""
+        """Danmaku server URL list"""
         self._auth_body: Optional[str] = None
-        """连接弹幕服务器用的认证包内容"""
+        """Authentication packet content for connecting to danmaku server"""
         self._game_id: Optional[str] = None
-        """项目场次ID"""
+        """Project session ID"""
 
-        # 在运行时初始化的字段
+        # Fields initialized at runtime
         self._game_heartbeat_timer_handle: Optional[asyncio.TimerHandle] = None
-        """发项目心跳包定时器的handle"""
+        """Handle for project heartbeat packet timer"""
 
     @property
     def room_owner_uid(self) -> Optional[int]:
         """
-        主播用户ID，调用init_room后初始化
+        Streamer user ID, initialized after calling init_room
         """
         return self._room_owner_uid
 
     @property
     def room_owner_open_id(self) -> Optional[str]:
         """
-        主播Open ID，调用init_room后初始化
+        Streamer Open ID, initialized after calling init_room
         """
         return self._room_owner_open_id
 
     @property
     def room_owner_auth_code(self):
         """
-        主播身份码
+        Streamer auth code
         """
         return self._room_owner_auth_code
 
     @property
     def app_id(self):
         """
-        在开放平台创建的项目ID
+        Project ID created on the open platform
         """
         return self._app_id
 
     @property
     def game_id(self) -> Optional[str]:
         """
-        项目场次ID，调用init_room后初始化
+        Project session ID, initialized after calling init_room
         """
         return self._game_id
 
     async def close(self):
         """
-        释放本客户端的资源，调用后本客户端将不可用
+        Release resources of this client; after calling, this client will be unusable
         """
         if self.is_running:
             logger.warning('room=%s is calling close(), but client is running', self.room_id)
@@ -148,9 +148,9 @@ class OpenLiveClient(ws_base.WebSocketClientBase):
 
     async def init_room(self):
         """
-        开启项目，并初始化连接房间需要的字段
+        Start the project and initialize fields needed for connecting to the room
 
-        :return: 是否成功
+        :return: whether successful
         """
         if not await self._start_game():
             return False
@@ -195,7 +195,8 @@ class OpenLiveClient(ws_base.WebSocketClientBase):
 
     async def _end_game(self):
         """
-        关闭项目。建议关闭客户端时保证调用到这个函数（close会调用），否则可能短时间内无法重复连接同一个房间
+        Close the project. Ensure this function is called when closing the client (close will call it),
+        otherwise it may not be possible to reconnect to the same room for a short period
         """
         if self._game_id in (None, ''):
             return True
@@ -213,7 +214,7 @@ class OpenLiveClient(ws_base.WebSocketClientBase):
                 code = data['code']
                 if code != 0:
                     if code in (7000, 7003):
-                        # 项目已经关闭了也算成功
+                        # Considered successful if the project is already closed
                         return True
 
                     logger.warning('room=%d _end_game() failed, code=%d, message=%s, request_id=%s',
@@ -226,7 +227,7 @@ class OpenLiveClient(ws_base.WebSocketClientBase):
 
     def _on_send_game_heartbeat(self):
         """
-        定时发送项目心跳包的回调
+        Callback for periodically sending project heartbeat packets
         """
         self._game_heartbeat_timer_handle = asyncio.get_running_loop().call_later(
             self._game_heartbeat_interval, self._on_send_game_heartbeat
@@ -235,14 +236,14 @@ class OpenLiveClient(ws_base.WebSocketClientBase):
 
     async def _send_game_heartbeat(self):
         """
-        发送项目心跳包
+        Send project heartbeat packet
         """
         if self._game_id in (None, ''):
             logger.warning('game=%d _send_game_heartbeat() failed, game_id not found', self._game_id)
             return False
 
         try:
-            # 保存一下，防止await之后game_id改变
+            # Save it to prevent game_id change after await
             game_id = self._game_id
             async with self._request_open_live(
                 HEARTBEAT_URL,
@@ -259,7 +260,7 @@ class OpenLiveClient(ws_base.WebSocketClientBase):
                                    self._room_id, code, data['message'], data['request_id'])
 
                     if code == 7003 and self._game_id == game_id:
-                        # 项目异常关闭，可能是心跳超时，需要重新开启项目
+                        # Project abnormally closed, possibly heartbeat timeout, need to restart the project
                         self._need_init_room = True
                         if self._websocket is not None and not self._websocket.closed:
                             await self._websocket.close()
@@ -272,9 +273,9 @@ class OpenLiveClient(ws_base.WebSocketClientBase):
 
     async def _on_before_ws_connect(self, retry_count):
         """
-        在每次建立连接之前调用，可以用来初始化房间
+        Called before each connection attempt, can be used to initialize the room
         """
-        # 重连次数太多则重新init_room，保险
+        # Re-init_room if too many reconnection attempts, as a safeguard
         reinit_period = max(3, len(self._host_server_url_list or ()))
         if retry_count > 0 and retry_count % reinit_period == 0:
             self._need_init_room = True
@@ -282,20 +283,20 @@ class OpenLiveClient(ws_base.WebSocketClientBase):
 
     def _get_ws_url(self, retry_count) -> str:
         """
-        返回WebSocket连接的URL，可以在这里做故障转移和负载均衡
+        Return the WebSocket URL for connection, can be used for failover and load balancing
         """
         return self._host_server_url_list[retry_count % len(self._host_server_url_list)]
 
     async def _send_auth(self):
         """
-        发送认证包
+        Send authentication packet
         """
         await self._websocket.send_bytes(self._make_packet(self._auth_body, ws_base.Operation.AUTH))
 
     def _handle_command(self, command: dict):
         cmd = command.get('cmd', '')
         if cmd == 'LIVE_OPEN_PLATFORM_INTERACTION_END' and command['data']['game_id'] == self._game_id:
-            # 服务器主动停止推送，可能是心跳超时，需要重新开启项目
+            # Server actively stops pushing, possibly heartbeat timeout, need to restart the project
             logger.warning('room=%d game end by server, game_id=%s', self._room_id, self._game_id)
 
             self._need_init_room = True

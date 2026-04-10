@@ -22,7 +22,7 @@ import anyio
 
 from py.get_setting import SKILLS_DIR
 
-# 尝试导入SDK，如果是在独立环境运行则忽略错误
+# Try to import SDK, ignore errors if running standalone
 try:
     from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
     from py.get_setting import load_settings
@@ -38,10 +38,10 @@ except ImportError:
             "qcSettings": {"permissionMode": "default"}
         }
 
-# ==================== 环境初始化 ====================
+# ==================== Environment Initialization ====================
 
 def get_shell_environment():
-    """通过子进程获取完整的 shell 环境"""
+    """Get complete shell environment via subprocess"""
     shell = os.environ.get('SHELL', '/bin/zsh')
     home = Path.home()
     
@@ -52,7 +52,7 @@ def get_shell_environment():
         'env'
     ]
     
-    # Windows 环境简单跳过
+    # Skip for Windows environment
     if platform.system() == "Windows":
         return
 
@@ -78,10 +78,10 @@ def get_shell_environment():
 
 get_shell_environment()
 
-# ==================== 核心基础设施：流处理 ====================
+# ==================== Core Infrastructure: Stream Processing ====================
 
 async def read_stream(stream, *, is_error: bool = False):
-    """读取流并添加错误前缀"""
+    """Read stream and add error prefix"""
     if stream is None:
         return
     async for line in stream:
@@ -89,7 +89,7 @@ async def read_stream(stream, *, is_error: bool = False):
         yield f"{prefix}{line.decode('utf-8', errors='replace').rstrip()}"
 
 async def _merge_streams(*streams):
-    """合并多个异步流"""
+    """Merge multiple async streams"""
     streams = [s.__aiter__() for s in streams]
     while streams:
         for stream in list(streams):
@@ -100,7 +100,7 @@ async def _merge_streams(*streams):
                 streams.remove(stream)
 
 async def _get_current_cwd() -> str:
-    """获取当前配置的工作目录"""
+    """Get the currently configured working directory"""
     settings = await load_settings()
     cwd = settings.get("CLISettings", {}).get("cc_path")
     if not cwd:
@@ -109,54 +109,54 @@ async def _get_current_cwd() -> str:
 
 def get_detailed_exit_info(code: int, command: str) -> str:
     """
-    根据退出码和操作系统，生成详细的诊断信息和建议。
+    Generate detailed diagnostic info and suggestions based on exit code and OS.
     """
     cmd_name = command.strip().split()[0] if command.strip() else "unknown"
     system = platform.system()
-    
-    # 基础映射
+
+    # Base mapping
     explanations = {
-        1: "常规错误 (权限不足、语法错误或逻辑失败)。",
-        2: "Shell 内置命令使用不当。",
-        126: "命令不可执行 (权限不足或不是可执行文件)。",
-        127: "找不到命令 (Linux/Unix)。",
-        130: "由 Control-C 终止。",
-        137: "进程被强制杀死 (可能触发了 OOM 内存溢出)。",
-        # Windows 特有
-        9009: f"Windows: 找不到命令 '{cmd_name}'。请检查程序是否已安装，或是否已加入 PATH 环境变量。",
-        5: "Windows: 拒绝访问 (权限不足)。",
+        1: "General error (insufficient permissions, syntax error, or logic failure).",
+        2: "Shell builtin command used improperly.",
+        126: "Command not executable (insufficient permissions or not an executable file).",
+        127: "Command not found (Linux/Unix).",
+        130: "Terminated by Control-C.",
+        137: "Process was forcefully killed (may have triggered OOM memory overflow).",
+        # Windows specific
+        9009: f"Windows: Command '{cmd_name}' not found. Check if the program is installed or added to PATH.",
+        5: "Windows: Access denied (insufficient permissions).",
     }
-    
-    info = f"\n[诊断信息] 进程退出码: {code}\n"
-    info += f"[解释] {explanations.get(code, '未知错误类型')}\n"
-    
+
+    info = f"\n[Diagnostic Info] Process Exit Code: {code}\n"
+    info += f"[Explanation] {explanations.get(code, 'Unknown error type')}\n"
+
     if code in [127, 9009]:
-        info += f"💡 建议:\n"
+        info += f"💡 Suggestion:\n"
         if system == "Windows":
-            info += f"  1. 运行 'where {cmd_name}' 检查程序位置。\n"
-            info += f"  2. 如果是刚安装的软件，可能需要重启 Agent 或使用绝对路径。\n"
+            info += f"  1. Run 'where {cmd_name}' to check program location.\n"
+            info += f"  2. If it's newly installed software, you may need to restart the Agent or use an absolute path.\n"
         else:
-            info += f"  1. 运行 'which {cmd_name}' 检查程序位置。\n"
-            info += f"  2. 检查环境变量: 'echo $PATH'\n"
+            info += f"  1. Run 'which {cmd_name}' to check program location.\n"
+            info += f"  2. Check environment variables: 'echo $PATH'\n"
             
     return info
 
 async def read_stream(stream, *, is_error: bool = False):
     """
-    改进的流读取器：支持多编码回退，确保能抓取到系统原始报错。
+    Improved stream reader: supports multi-encoding fallback to capture raw system errors.
     """
     if stream is None:
         return
-    
+
     prefix = "[ERROR] " if is_error else ""
-    
+
     while True:
         line_bytes = await stream.readline()
         if not line_bytes:
             break
-            
+
         decoded = ""
-        # 依次尝试：UTF-8 -> GBK (Windows) -> CP437 -> 替换模式
+        # Try in order: UTF-8 -> GBK (Windows) -> CP437 -> replacement mode
         for enc in ['utf-8', 'gbk', 'cp437']:
             try:
                 decoded = line_bytes.decode(enc).rstrip()
@@ -169,12 +169,12 @@ async def read_stream(stream, *, is_error: bool = False):
             
         yield f"{prefix}{decoded}"
 
-# ==================== [新增] 核心基础设施：进程管理 ====================
+# ==================== [New] Core Infrastructure: Process Management ====================
 
 class ProcessManager:
-    """全局后台进程管理器 (Docker & Local) - 增强版 (支持 Windows 进程树查杀)"""
+    """Global background process manager (Docker & Local) - Enhanced (supports Windows process tree kill)"""
     def __init__(self):
-        # 结构: {pid: {"proc": proc, "logs": deque, "cmd": str, "type": str, "task": task, "status": str, "start_time": str}}
+        # Structure: {pid: {"proc": proc, "logs": deque, "cmd": str, "type": str, "task": task, "status": str, "start_time": str}}
         self._processes = {}
         self._counter = 0
 
@@ -183,7 +183,7 @@ class ProcessManager:
         return str(self._counter)
 
     async def register_process(self, proc, cmd: str, p_type: str):
-        """注册并开始监控一个后台进程"""
+        """Register and start monitoring a background process"""
         pid = self.generate_id()
         logs = deque(maxlen=2000)
         
@@ -215,7 +215,7 @@ class ProcessManager:
             )
             await proc.wait()
             if pid in self._processes:
-                # 只有当状态不是被手动 terminated 时才更新为 exited
+                # Only update to exited if not manually terminated
                 if "terminated" not in self._processes[pid]["status"]:
                     self._processes[pid]["status"] = f"exited (code {proc.returncode})"
         except Exception as e:
@@ -253,38 +253,38 @@ class ProcessManager:
 
     async def kill_process(self, pid: str):
         """
-        强制结束进程。
-        针对 Windows 使用 taskkill /T 结束进程树，防止子进程残留。
+        Force terminate a process.
+        Use taskkill /T on Windows to kill the process tree, preventing orphan subprocesses.
         """
         if pid not in self._processes:
             return f"Error: Process ID {pid} not found."
-        
+
         info = self._processes[pid]
         proc = info["proc"]
-        
-        # 即使 proc.returncode 已经有值，也要尝试清理可能的孤儿进程
+
+        # Even if proc.returncode already has a value, still try to clean up potential orphan processes
         os_pid = proc.pid
-        
+
         try:
             info["status"] = "terminating..."
-            
+
             if platform.system() == "Windows":
-                # Windows: 使用 taskkill /F (强制) /T (进程树) /PID <pid>
-                # 这是清理 PowerShell/CMD 启动的子进程的关键
+                # Windows: use taskkill /F (force) /T (process tree) /PID <pid>
+                # This is key for cleaning up subprocesses spawned by PowerShell/CMD
                 kill_cmd = f"taskkill /F /T /PID {os_pid}"
                 subprocess.run(kill_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             else:
-                # Linux/Mac: 尝试杀进程组 (如果适用) 或标准 terminate
+                # Linux/Mac: try to kill process group (if applicable) or standard terminate
                 try:
                     proc.terminate()
-                    # 给一点时间优雅退出
+                    # Give some time for graceful exit
                     await asyncio.wait_for(proc.wait(), timeout=2.0)
                 except (asyncio.TimeoutError, ProcessLookupError):
                     try:
                         proc.kill()
                     except:
                         pass
-            
+
             info["status"] = "terminated"
             return f"Process {pid} (OS PID {os_pid}) terminated successfully."
             
@@ -293,16 +293,16 @@ class ProcessManager:
         
 process_manager = ProcessManager()
 
-# ==================== [新增] 核心基础设施：Docker 网络代理 ====================
+# ==================== [New] Core Infrastructure: Docker Network Proxy ====================
 
 class DockerPortProxy:
-    """纯 Python 实现的 Docker 端口转发器 (Container -> Host)"""
+    """Pure Python Docker port forwarder (Container -> Host)"""
     def __init__(self, container_name: str):
         self.container_name = container_name
         self.proxies = {} # {local_port: server_obj}
 
     async def start_forward(self, local_port: int, container_port: int):
-        """开启转发：本地 TCP Server -> docker exec 桥接 -> 容器内部端口"""
+        """Start forwarding: local TCP Server -> docker exec bridge -> container internal port"""
         if local_port in self.proxies:
             return f"Port {local_port} is already being forwarded."
 
@@ -326,9 +326,9 @@ class DockerPortProxy:
             return s.connect_ex(('127.0.0.1', port)) != 0
 
     async def _handle_client(self, client_reader, client_writer, container_port):
-        """处理每个连接：启动一个 docker exec 进程作为管道"""
+        """Handle each connection: start a docker exec process as a pipe"""
         try:
-            # 微型 Python 转发脚本，在容器内运行
+            # Mini Python forwarding script, runs inside the container
             proxy_script = (
                 "import socket,sys,threading;"
                 "s=socket.socket();"
@@ -398,19 +398,19 @@ class DockerPortProxy:
 
 DOCKER_PROXIES = {} # {container_name: ProxyInstance}
 
-# ==================== Docker Sandbox 基础设施 ====================
+# ==================== Docker Sandbox Infrastructure ====================
 
 def get_safe_container_name(cwd: str) -> str:
-    """根据路径生成合法容器名"""
+    """Generate a legal container name from the path"""
     abs_path = str(Path(cwd).resolve())
     path_hash = hashlib.md5(abs_path.encode()).hexdigest()[:12]
     return f"sandbox-{path_hash}"
 
 async def get_or_create_docker_sandbox(cwd: str, image_name: str = "docker/sandbox-templates:claude-code") -> str:
-    """获取或创建基于路径的持久化沙盒，并映射全局skills目录"""
+    """Get or create a path-based persistent sandbox, and map the global skills directory"""
     container_name = get_safe_container_name(cwd)
-    
-    # 获取主机的全局skills目录
+
+    # Get the host's global skills directory
     host_skills_dir = SKILLS_DIR
     
     check_proc = await asyncio.create_subprocess_exec(
@@ -426,18 +426,18 @@ async def get_or_create_docker_sandbox(cwd: str, image_name: str = "docker/sandb
         if "Up" in status:
             return container_name
         else:
-            # 启动已存在的容器
+            # Start existing container
             await asyncio.create_subprocess_exec("docker", "start", container_name, stdout=asyncio.subprocess.PIPE)
             return container_name
-    
-    # 创建新容器，映射主机的全局skills目录
-    # 注意：我们将主机skills目录映射到容器内的 /root/.agents/skills
-    # 这是标准Agent Skills CLI使用的路径
+
+    # Create a new container, mapping the host's global skills directory
+    # Note: We map the host skills directory to /root/.agents/skills inside the container
+    # This is the path used by the standard Agent Skills CLI
     create_cmd = [
         "docker", "run", "-d",
         "--name", container_name,
-        "-v", f"{cwd}:/workspace",  # 映射工作目录
-        "-v", f"{host_skills_dir}:/home/agent/.agents/skills",   # 映射全局skills目录到容器内
+        "-v", f"{cwd}:/workspace",  # Map working directory
+        "-v", f"{host_skills_dir}:/home/agent/.agents/skills",   # Map global skills directory to container
         "-w", "/workspace",
         "--restart", "unless-stopped",
         image_name,
@@ -452,9 +452,9 @@ async def get_or_create_docker_sandbox(cwd: str, image_name: str = "docker/sandb
     stdout, stderr = await proc.communicate()
     
     if proc.returncode == 0:
-        # 容器创建成功，确保容器内的skills目录权限正确
+        # Container created successfully, ensure the skills directory permissions inside the container are correct
         try:
-            # 设置容器内skills目录的权限
+            # Set permissions for the skills directory inside the container
             chown_cmd = [
                 "docker", "exec", container_name,
                 "chown", "-R", "root:root", "/root/.agents/skills"
@@ -466,12 +466,12 @@ async def get_or_create_docker_sandbox(cwd: str, image_name: str = "docker/sandb
             )
             await chown_proc.communicate()
         except Exception:
-            # 权限设置失败不影响主要功能
+            # Permission setting failure does not affect the main function
             pass
         
         return container_name
     else:
-        # 简单重试逻辑
+        # Simple retry logic
         if "is already in use" in stderr.decode():
             await asyncio.sleep(0.5)
             return await get_or_create_docker_sandbox(cwd, image_name)
@@ -479,7 +479,7 @@ async def get_or_create_docker_sandbox(cwd: str, image_name: str = "docker/sandb
 
 
 async def _exec_docker_cmd_simple(cwd: str, cmd_list: list) -> str:
-    """内部辅助函数：在容器内执行简单命令并获取输出"""
+    """Internal helper: execute a simple command in the container and get output"""
     container_name = await get_or_create_docker_sandbox(cwd)
     full_cmd = ["docker", "exec", "-w", "/workspace", container_name] + cmd_list
     
@@ -494,10 +494,10 @@ async def _exec_docker_cmd_simple(cwd: str, cmd_list: list) -> str:
         raise Exception(f"Command failed: {stderr.decode().strip()}")
     return stdout.decode()
 
-# ==================== Docker 环境工具实现 (含新功能) ====================
+# ==================== Docker Environment Tool Implementations (with new features) ====================
 
 async def docker_sandbox_async(command: str, background: bool = False) -> str | AsyncIterator[str]:
-    """[Docker] 在沙盒中执行命令，增强了错误捕获和诊断能力"""
+    """[Docker] Execute command in sandbox, with enhanced error capture and diagnostic capabilities"""
     settings = await load_settings()
     cwd = settings.get("CLISettings", {}).get("cc_path")
     if not cwd: return "Error: No workspace directory specified in settings."
@@ -542,23 +542,23 @@ async def docker_sandbox_async(command: str, background: bool = False) -> str | 
             await process.wait()
             
             if process.returncode != 0:
-                yield f"\n--- Docker 执行失败 ---"
-                # 合成 Docker 内部的 command not found
+                yield f"\n--- Docker Execution Failed ---"
+                # Synthesize Docker internal command not found
                 if not error_yielded and process.returncode == 127:
                     cmd_name = command.strip().split()[0]
-                    yield f"[ERROR] sh: {cmd_name}: not found (命令在容器中不存在)"
-                
+                    yield f"[ERROR] sh: {cmd_name}: not found (command does not exist in container)"
+
                 yield get_detailed_exit_info(process.returncode, command)
-                yield "💡 注意：您当前在 Docker 容器内，某些主机上的工具可能无法直接访问。"
+                yield "💡 Note: You are currently inside a Docker container, some host tools may not be directly accessible."
             elif not output_yielded:
-                yield "[SUCCESS] 命令在 Docker 中成功执行，无输出。"
+                yield "[SUCCESS] Command executed successfully in Docker, no output."
     
         return _stream()
     except Exception as e:
-        return f"[ERROR] Docker 进程启动失败: {str(e)}"
+        return f"[ERROR] Docker process startup failed: {str(e)}"
 
 async def edit_file_patch_tool(path: str, old_string: str, new_string: str) -> str:
-    """[Docker] 精确字符串替换"""
+    """[Docker] Precise string replacement"""
     try:
         real_cwd = await _get_current_cwd()
         container_name = await get_or_create_docker_sandbox(real_cwd)
@@ -595,7 +595,7 @@ async def edit_file_patch_tool(path: str, old_string: str, new_string: str) -> s
         return f"[Error] Patch failed: {str(e)}"
 
 async def glob_files_tool(pattern: str, exclude: str = "**/node_modules/**,**/.git/**,**/__pycache__/**") -> str:
-    """[Docker] Glob 递归查找"""
+    """[Docker] Glob recursive file search"""
     try:
         real_cwd = await _get_current_cwd()
         exclude_list = [e.strip() for e in exclude.split(",") if e.strip()]
@@ -628,15 +628,15 @@ print(json.dumps(filtered))
     except Exception as e:
         return f"[Error] Glob failed: {str(e)}"
 
-async def todo_write_tool(action: str, id: str = None, content: str = None, 
+async def todo_write_tool(action: str, id: str = None, content: str = None,
                           priority: str = "medium", status: str = None) -> str:
-    """[Docker] 待办任务管理工具 - 使用3位数字有序ID"""
+    """[Docker] Todo task management tool - uses 3-digit ordered IDs"""
     try:
         real_cwd = await _get_current_cwd()
         container_name = await get_or_create_docker_sandbox(real_cwd)
         todo_file = "/workspace/.agent/ai_todos.json"
         
-        # 从 Docker 容器读取任务列表
+        # Read task list from Docker container
         try:
             data = await _exec_docker_cmd_simple(real_cwd, ["cat", todo_file])
             todos = json.loads(data)
@@ -645,20 +645,20 @@ async def todo_write_tool(action: str, id: str = None, content: str = None,
             
         msg = ""
 
-        # 生成下一个有序ID的辅助函数
+        # Helper function to generate next ordered ID
         def _generate_ordered_id(existing_todos):
             if not existing_todos:
                 return "1"
-            # 找出最大数字 ID（兼容旧数据）
+            # Find max numeric ID (compatible with old data)
             numeric_ids = [int(t['id']) for t in existing_todos if t['id'].isdigit()]
             if not numeric_ids:
                 return "1"
-            return str(max(numeric_ids) + 1)  # 1, 2, 3... 不补零，不限制位数
+            return str(max(numeric_ids) + 1)  # 1, 2, 3... no zero padding, no digit limit
 
         if action == "create":
-            """创建新任务 - 自动生成3位数字有序ID"""
+            """Create new task - auto generate ordered numeric ID"""
             if not content: 
-                return "[Error] 创建任务必须提供 content 参数"
+                return "[Error] Creating a task requires the content parameter"
             
             new_id = _generate_ordered_id(todos)
             new_todo = {
@@ -670,14 +670,14 @@ async def todo_write_tool(action: str, id: str = None, content: str = None,
                 "completed_at": None
             }
             todos.append(new_todo)
-            msg = f"[Success] 已创建任务 #{new_id}: {content[:30]}"
+            msg = f"[Success] Created task #{new_id}: {content[:30]}"
             
         elif action == "list":
-            """列出所有任务 - 按ID数字排序"""
+            """List all tasks - sorted by ID number"""
             if not todos: 
-                return "当前暂无任务"
+                return "No tasks currently"
             
-            lines = ["📋 **任务列表** (ID越大创建越晚):"]
+            lines = ["📋 **Task List** (Higher ID = created later):"]
             sorted_todos = sorted(todos, key=lambda x: int(x['id']) if x['id'].isdigit() else 0)
             
             for t in sorted_todos:
@@ -688,47 +688,47 @@ async def todo_write_tool(action: str, id: str = None, content: str = None,
             return "\n".join(lines)
 
         elif action == "complete":
-            """【高频】标记任务为已完成 - 幂等操作"""
+            """[High freq] Mark task as completed - idempotent operation"""
             if not id: 
-                return "[Error] 完成任务必须提供 id (如: 001)"
+                return "[Error] Completing a task requires an id (e.g.: 001)"
             
             target = next((t for t in todos if t['id'] == id), None)
             if not target: 
-                return f"[Error] 未找到任务 #{id}"
+                return f"[Error] Task not found #{id}"
             
             if target.get('status') == 'done':
-                msg = f"[Info] 任务 #{id} 已经是完成状态"
+                msg = f"[Info] Task #{id} is already completed"
             else:
                 target['status'] = 'done'
                 target['completed_at'] = datetime.now().isoformat()
-                msg = f"[Success] 已完成任务 #{id}"
+                msg = f"[Success] Completed task #{id}"
 
         elif action == "toggle":
-            """切换完成状态"""
+            """Toggle completion status"""
             if not id: 
-                return "[Error] 切换状态必须提供 id"
+                return "[Error] Toggling status requires an id"
             
             target = next((t for t in todos if t['id'] == id), None)
             if not target: 
-                return f"[Error] 未找到任务 #{id}"
+                return f"[Error] Task not found #{id}"
             
             if target.get('status') != 'done':
                 target['status'] = 'done'
                 target['completed_at'] = datetime.now().isoformat()
-                msg = f"[Success] 已完成任务 #{id}"
+                msg = f"[Success] Completed task #{id}"
             else:
                 target['status'] = 'pending'
                 target['completed_at'] = None
-                msg = f"[Success] 已重新打开任务 #{id}"
+                msg = f"[Success] Reopened task #{id}"
 
         elif action == "update":
-            """编辑任务详情"""
+            """Edit task details"""
             if not id: 
-                return "[Error] 更新任务必须提供 id"
+                return "[Error] Updating a task requires an id"
             
             target = next((t for t in todos if t['id'] == id), None)
             if not target: 
-                return f"[Error] 未找到任务 #{id}"
+                return f"[Error] Task not found #{id}"
             
             if content: 
                 target['content'] = content
@@ -743,24 +743,24 @@ async def todo_write_tool(action: str, id: str = None, content: str = None,
                 target['status'] = status
             
             target['updated_at'] = datetime.now().isoformat()
-            msg = f"[Success] 已更新任务 #{id}"
+            msg = f"[Success] Updated task #{id}"
 
         elif action == "delete":
-            """删除任务"""
+            """Delete task"""
             if not id: 
-                return "[Error] 删除任务必须提供 id"
+                return "[Error] Deleting a task requires an id"
             
             target = next((t for t in todos if t['id'] == id), None)
             if not target: 
-                return f"[Error] 未找到任务 #{id}"
+                return f"[Error] Task not found #{id}"
             
             todos.remove(target)
-            msg = f"[Success] 已删除任务 #{id}"
+            msg = f"[Success] Deleted task #{id}"
 
         else:
-            return f"[Error] 未知操作: {action}"
+            return f"[Error] Unknown action: {action}"
 
-        # 写回 Docker 容器
+        # Write back to Docker container
         with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as tmp:
             tmp.write(json.dumps(todos, indent=2, ensure_ascii=False))
             tmp_path = tmp.name
@@ -777,9 +777,9 @@ async def todo_write_tool(action: str, id: str = None, content: str = None,
         return msg
         
     except Exception as e:
-        return f"[Error] 任务操作失败: {str(e)}"
+        return f"[Error] Task operation failed: {str(e)}"
     
-# 恢复原有的 Docker 基础文件工具
+# Restore original Docker basic file tools
 async def list_files_tool(path: str = ".", show_all: bool = True) -> str:
     try:
         real_cwd = await _get_current_cwd()
@@ -788,10 +788,10 @@ async def list_files_tool(path: str = ".", show_all: bool = True) -> str:
     except Exception as e: return str(e)
 
 async def read_file_tool(path: str) -> str:
-    """[Docker] 读取文件：增加大小限制和结构化提示"""
+    """[Docker] Read file: with size limit and structured hints"""
     try:
         real_cwd = await _get_current_cwd()
-        # 使用 shell 脚本限制读取前 2000 行，并返回总行数提示
+        # Use shell script to limit to first 2000 lines, return total count hint
         script = f"""
         if [ ! -f "{path}" ]; then echo "[Error] File not found: {path}"; exit 0; fi
         total=$(wc -l < "{path}" 2>/dev/null || echo 0)
@@ -806,21 +806,21 @@ async def read_file_tool(path: str) -> str:
     except Exception as e: return str(e)
 
 async def read_file_range_tool(path: str, start_line: int, end_line: int) -> str:
-    """[Docker] 精准读取文件指定行范围"""
+    """[Docker] Read specific line range from file"""
     try:
         if start_line < 1 or end_line < start_line:
             return "[Error] Invalid line range."
         real_cwd = await _get_current_cwd()
-        # 使用 awk 高效读取指定行，并带上行号
+        # Use awk to efficiently read specified lines with line numbers
         script = f"""awk 'NR>={start_line} && NR<={end_line} {{printf "%5d | %s\\n", NR, $0}}' "{path}" """
         return await _exec_docker_cmd_simple(real_cwd, ["sh", "-c", script])
     except Exception as e: return str(e)
 
 async def tail_file_tool(path: str, lines: int = 100) -> str:
-    """[Docker] 读取文件末尾（常用于日志）"""
+    """[Docker] Read end of file (commonly used for logs)"""
     try:
         real_cwd = await _get_current_cwd()
-        # 先打行号，再 tail
+        # Add line numbers first, then tail
         script = f"""cat -n "{path}" | tail -n {lines}"""
         return await _exec_docker_cmd_simple(real_cwd, ["sh", "-c", script])
     except Exception as e: return str(e)
@@ -847,10 +847,10 @@ async def search_files_tool(pattern: str, path: str = ".") -> str:
     except Exception as e: return str(e)
 
 
-# ==================== [新增] 管理工具：进程与网络 ====================
+# ==================== [New] Management Tools: Processes and Network ====================
 
 async def manage_processes_tool(action: str, pid: str = None) -> str:
-    """[Common] 管理后台进程"""
+    """[Common] Manage background processes"""
     if action == "list":
         return process_manager.list_processes()
     if action == "logs":
@@ -862,7 +862,7 @@ async def manage_processes_tool(action: str, pid: str = None) -> str:
     return "Error: Unknown action. Use list, logs, or kill."
 
 async def docker_manage_ports_tool(action: str, container_port: int = 8000, host_port: int = None) -> str:
-    """[Docker] 端口转发管理"""
+    """[Docker] Port forwarding management"""
     try:
         real_cwd = await _get_current_cwd()
         container_name = await get_or_create_docker_sandbox(real_cwd)
@@ -884,7 +884,7 @@ async def docker_manage_ports_tool(action: str, container_port: int = 8000, host
         return f"[Error] Port tool failed: {str(e)}"
 
 async def local_net_tool(action: str, port: int = None) -> str:
-    """[Local] 本地网络工具：检查端口占用"""
+    """[Local] Local network tool: check port occupancy"""
     if action == "check":
         if not port: return "Error: Port required."
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -893,7 +893,7 @@ async def local_net_tool(action: str, port: int = None) -> str:
             return f"Port {port} on localhost is {status}."
     
     if action == "scan":
-        # 简单扫描常用开发端口
+        # Simple scan of common dev ports
         common_ports = [3000, 5000, 8000, 8080, 80, 443, 3306, 5432]
         results = []
         for p in common_ports:
@@ -906,41 +906,41 @@ async def local_net_tool(action: str, port: int = None) -> str:
         
     return "Unknown action. Use check or scan."
 
-# ==================== 本地环境 (Local) 工具实现 ====================
+# ==================== Local Environment Tool Implementation ====================
 
 def resolve_strict_path(cwd: str, sub_path: str, check_symlink: bool = True) -> Path:
     """
-    严格工作区路径解析
-    - 禁止绝对路径
-    - 禁止 ../ 遍历  
-    - 禁止通过符号链接指向工作区外
+    Strict workspace path resolution
+    - Block absolute paths
+    - Block ../ traversal  
+    - Block symlinks pointing outside workspace
     """
     base = Path(cwd).resolve()
     
     if not sub_path:
         return base
         
-    # 清理输入（阻止空字节、换行等）
+    # Clean input (prevent null bytes, newlines, etc.)
     sub_path = sub_path.strip().replace('\x00', '').replace('\n', '')
     
-    # 显式禁止路径遍历模式（快速失败）
+    # Explicitly block path traversal patterns (fail fast)
     if '..' in sub_path.split(os.sep):
         raise PermissionError(f"Path traversal detected: {sub_path}")
     
-    # 禁止绝对路径（Windows C:\ 和 Unix /）
+    # Block absolute paths (Windows C:\ and Unix /)
     if os.path.isabs(sub_path) or (len(sub_path) > 1 and sub_path[1] == ':'):
         raise PermissionError(f"Absolute paths not allowed: {sub_path}")
     
-    # 解析完整路径
+    # Resolve full path
     target = (base / sub_path).resolve()
     
-    # 关键检查：确保 resolve 后的路径仍在 base 内
+    # Key check: ensure resolved path stays within base
     try:
         target.relative_to(base)
     except ValueError:
         raise PermissionError(f"Access denied: {sub_path} resolves outside workspace")
     
-    # 符号链接检查（防止 /workspace/link -> /etc）
+    # Symlink check (prevent /workspace/link -> /etc)
     if check_symlink and target.exists():
         real_path = target.resolve(strict=True)
         try:
@@ -954,13 +954,13 @@ from typing import Tuple
 
 def validate_bash_command(command: str, cwd: str, mode: str = "default") -> Tuple[bool, str]:
     """
-    安全校验策略（Windows 优化版）：
-    1. 移除了过于暴力的 '..' 正则拦截，允许正常的相对路径传参
-    2. 严格禁止绝对路径越权（访问 C盘根目录、Windows目录等）
-    3. 依靠底层执行时的 cwd 限制和专用文件工具来保障安全
+    Security validation strategy (Windows optimized):
+    1. Removed overly aggressive '..' regex interception, allows normal relative path arguments
+    2. Strictly block absolute path escalation (accessing C:\ root, Windows directory, etc.)
+    3. Rely on cwd restriction during execution and dedicated file tools for security
     """
     
-    # ===== 1. 绝对路径与敏感目录防御 =====
+    # ===== 1. Absolute path and sensitive directory defense =====
     sensitive_roots = [
         r'/etc', r'/var', r'/root', r'/bin', r'/sbin', r'/usr',  # Linux
         r'C:\\Windows', r'C:\\Program Files', r'C:\\Users'       # Windows
@@ -970,13 +970,13 @@ def validate_bash_command(command: str, cwd: str, mode: str = "default") -> Tupl
         if re.search(r'(?:\s|^)' + root, command, re.IGNORECASE):
             return False, f"Access to system directory '{root}' is blocked"
 
-    # 禁止直接 cd 到根目录或其他盘符
+    # Block direct cd to root directory or other drives
     if re.search(r'\bcd\s+/(?!(workspace|tmp|dev/null))', command, re.IGNORECASE):
         return False, "Changing directory to outside workspace is blocked"
     if re.search(r'\bcd\s+[a-zA-Z]:\\', command, re.IGNORECASE):
         return False, "Changing Windows drive directly is blocked"
 
-    # ===== 2. 毁灭性操作（保持原样）=====
+    # ===== 2. Destructive operations (unchanged) =====
     destructive_patterns = [
         (r'rm\s+-rf\s*/', "Recursive delete root"),                
         (r'mkfs\.[a-z]+', "Filesystem format"),                    
@@ -989,7 +989,7 @@ def validate_bash_command(command: str, cwd: str, mode: str = "default") -> Tupl
         if re.search(pattern, command, re.IGNORECASE):
             return False, f"Destructive operation blocked: {reason}"
     
-    # ===== 3. 风险操作 =====
+    # ===== 3. Risky operations =====
     if mode != "yolo":
         risk_patterns = [
             (r'(curl|wget).*\|\s*(sh|bash|zsh|python|perl|php)', "Remote execution via pipe"),
@@ -1002,15 +1002,15 @@ def validate_bash_command(command: str, cwd: str, mode: str = "default") -> Tupl
     
     return True, command
 
-# ===== 修复乱码：增加 GBK 解码支持 =====
+# ===== Fix garbled text: add GBK decoding support =====
 async def read_stream(stream, *, is_error: bool = False):
-    """读取流并添加错误前缀，支持 Windows 中文编码"""
+    """Read stream and add error prefix, support Windows Chinese encoding"""
     if stream is None:
         return
     async for line in stream:
         prefix = "[ERROR] " if is_error else ""
         
-        # Windows 中文系统通常用 GBK，先尝试 UTF-8，失败则尝试 GBK
+        # Windows Chinese systems typically use GBK, try UTF-8 first, then GBK on failure
         try:
             decoded = line.decode('utf-8').rstrip()
         except UnicodeDecodeError:
@@ -1023,7 +1023,7 @@ async def read_stream(stream, *, is_error: bool = False):
 
 
 async def shell_tool_local(command: str, background: bool = False) -> str | AsyncIterator[str]:
-    """[Local] 执行本地命令，增强了错误捕获和诊断能力"""
+    """[Local] Execute local command, with enhanced error capture and diagnostics"""
     settings = await load_settings()
     cwd = settings.get("CLISettings", {}).get("cc_path")
     perm = settings.get("localEnvSettings", {}).get("permissionMode", "default")
@@ -1031,7 +1031,7 @@ async def shell_tool_local(command: str, background: bool = False) -> str | Asyn
     if not cwd: 
         return "Error: No workspace directory specified."
     
-    # 安全检查
+    # Security check
     allowed, result = validate_bash_command(command, cwd, mode=perm)
     if not allowed:
         return f"[Security] Command blocked: {result}"
@@ -1062,7 +1062,7 @@ async def shell_tool_local(command: str, background: bool = False) -> str | Asyn
             output_received = False
             error_received = False
             
-            # 合并读取 stdout 和 stderr
+            # Merge read stdout and stderr
             async for line in _merge_streams(
                 read_stream(proc.stdout, is_error=False), 
                 read_stream(proc.stderr, is_error=True)
@@ -1075,28 +1075,28 @@ async def shell_tool_local(command: str, background: bool = False) -> str | Asyn
             await proc.wait()
             
             if proc.returncode != 0:
-                yield f"\n--- 运行失败 ---"
-                # 如果 stderr 为空，手动补全 shell 报错
+                yield f"\n--- Execution failed ---"
+                # If stderr is empty, manually supplement shell error
                 if not error_received:
                     cmd_name = command.strip().split()[0]
                     if proc.returncode == 9009 and system == "Windows":
-                        yield f"[ERROR] '{cmd_name}' 不是内部或外部命令，也不是可运行的程序或批处理文件。"
+                        yield f"[ERROR] '{cmd_name}' is not recognized as an internal or external command, operable program or batch file."
                     elif proc.returncode == 127:
                         yield f"[ERROR] sh: {cmd_name}: command not found"
                 
-                # 输出深度诊断建议
+                # Output in-depth diagnostic suggestions
                 yield get_detailed_exit_info(proc.returncode, command)
                 
             elif not output_received:
-                yield "[SUCCESS] 命令已成功执行，但没有任何输出。"
+                yield "[SUCCESS] Command executed successfully, but no output."
                 
         return _stream()
     except Exception as e: 
-        return f"[系统错误] 无法启动进程: {str(e)}"
+        return f"[System error] Unable to start process: {str(e)}"
 
-# 恢复原有的 Local 文件工具
+# Restore original Local file tools
 async def list_files_tool_local(path: str = ".", show_all: bool = True) -> str:
-    """[Local] 列出文件：优先显示目录，支持数量截断，过滤隐藏文件"""
+    """[Local] List files: show directories first, support count truncation, filter hidden files"""
     try:
         cwd = await _get_current_cwd()
         target = resolve_strict_path(cwd, path, check_symlink=True)
@@ -1104,7 +1104,7 @@ async def list_files_tool_local(path: str = ".", show_all: bool = True) -> str:
         if not target.is_dir():
             return f"[Error] Not a directory: {path}"
 
-        # 使用 scandir 获取更详细的信息且速度更快
+        # Use scandir for more detailed info and faster speed
         entries = []
         try:
             with os.scandir(target) as it:
@@ -1113,17 +1113,17 @@ async def list_files_tool_local(path: str = ".", show_all: bool = True) -> str:
                         continue
                     
                     is_dir = entry.is_dir()
-                    # 格式：(是否目录, 排序名, 显示字符串)
-                    # 目录排在前面 (0)，文件排在后面 (1)
+                    # Format: (is_dir, sort_name, display_string)
+                    # Directories first (0), files after (1)
                     display_name = f"{entry.name}/" if is_dir else entry.name
                     entries.append((0 if is_dir else 1, entry.name.lower(), display_name))
         except PermissionError:
             return f"[Error] Permission denied accessing: {path}"
 
-        # 排序：先按目录/文件分，再按名称字母序
+        # Sort: first by dir/file, then alphabetically
         entries.sort()
 
-        # 数量截断防止 Token 爆炸
+        # Truncate count to prevent Token explosion
         MAX_ITEMS = 200
         result_lines = [e[2] for e in entries[:MAX_ITEMS]]
         
@@ -1138,7 +1138,7 @@ async def list_files_tool_local(path: str = ".", show_all: bool = True) -> str:
         return f"[Error] List failed: {str(e)}"
 
 async def read_file_tool_local(path: str) -> str:
-    """[Local] 读取文件：支持大文件截断读取，并返回结构化下一步建议"""
+    """[Local] Read file: support large file truncated read, return structured next step hints"""
     try:
         cwd = await _get_current_cwd()
         target = resolve_strict_path(cwd, path, check_symlink=True)
@@ -1146,7 +1146,7 @@ async def read_file_tool_local(path: str) -> str:
         if not target.exists() or not target.is_file():
             return f"[Error] File not found or not a file: {path}"
 
-        # 修复 Bug：移除 rb 模式下的 encoding 参数
+        # Fix Bug: remove encoding parameter in rb mode
         try:
             with open(target, 'rb') as f_bin:
                 if b'\0' in f_bin.read(1024):
@@ -1184,7 +1184,7 @@ async def read_file_tool_local(path: str) -> str:
         return f"[Error] Read failed: {str(e)}"
     
 async def read_file_range_tool_local(path: str, start_line: int, end_line: int) -> str:
-    """[Local] 精准读取文件指定行范围"""
+    """[Local] Read specific line range from file"""
     try:
         if start_line < 1 or end_line < start_line:
             return "[Error] Invalid line range. start_line must be >= 1 and end_line >= start_line."
@@ -1205,13 +1205,13 @@ async def read_file_range_tool_local(path: str, start_line: int, end_line: int) 
     except Exception as e: return f"[Error] Range read failed: {str(e)}"
 
 async def tail_file_tool_local(path: str, lines: int = 100) -> str:
-    """[Local] 读取文件末尾（常用于日志）"""
+    """[Local] Read end of file (commonly used for logs)"""
     try:
         cwd = await _get_current_cwd()
         target = resolve_strict_path(cwd, path, check_symlink=True)
         if not target.exists() or not target.is_file(): return f"[Error] File not found: {path}"
 
-        # 本地简单实现：读入后切片（如果文件极大建议改用 seek 倒序读，但此处通常够用）
+        # Simple local implementation: read and slice (for very large files, seek reverse read is recommended, but this is usually sufficient)
         async with aiofiles.open(target, 'r', encoding='utf-8', errors='replace') as f:
             all_lines = await f.readlines()
             
@@ -1222,19 +1222,19 @@ async def tail_file_tool_local(path: str, lines: int = 100) -> str:
     except Exception as e: return f"[Error] Tail failed: {str(e)}"
 
 async def edit_file_tool_local(path: str, content: str) -> str:
-    """[Local] 写入文件：修复了绝对路径误判问题"""
+    """[Local] Write file: fixed absolute path misjudgment issue"""
     try:
         cwd = await _get_current_cwd()
-        # 这一步已经确保了 path 不会逃逸出 cwd
+        # This step already ensures path does not escape cwd
         target = resolve_strict_path(cwd, path, check_symlink=True)
         
-        # 1. 确保父目录存在
+        # 1. Ensure parent directory exists
         parent_dir = target.parent
-        # --- 删除了导致报错的 resolve_strict_path(cwd, str(parent_dir)...) ---
+        # --- Removed resolve_strict_path(cwd, str(parent_dir)...) that caused errors ---
         
         await aiofiles.os.makedirs(parent_dir, exist_ok=True)
 
-        # 2. 创建备份 (如果文件存在)
+        # 2. Create backup (if file exists)
         backup_msg = ""
         if target.exists():
             try:
@@ -1244,7 +1244,7 @@ async def edit_file_tool_local(path: str, content: str) -> str:
             except Exception as e:
                 print(f"[Warn] Backup failed: {e}")
 
-        # 3. 原子写入
+        # 3. Atomic write
         temp_path = target.with_suffix(target.suffix + f".tmp.{uuid.uuid4().hex[:6]}")
         try:
             async with aiofiles.open(temp_path, 'w', encoding='utf-8') as f:
@@ -1265,19 +1265,19 @@ async def edit_file_tool_local(path: str, content: str) -> str:
         return f"[Error] Edit failed: {str(e)}"
 
 async def search_files_tool_local(pattern: str, path: str = ".") -> str:
-    """[Local] 智能搜索：优先尝试 git grep/grep，回退到优化的 Python 实现"""
+    """[Local] Smart search: try git grep/grep first, fallback to optimized Python implementation"""
     try:
         cwd = await _get_current_cwd()
         target_dir = resolve_strict_path(cwd, path, check_symlink=True)
         target_str = str(target_dir)
         
-        # 1. 尝试使用 git grep (速度最快，且自动尊重 .gitignore)
-        # 只有当在 git 仓库内且安装了 git 时有效
+        # 1. Try git grep (fastest, automatically respects .gitignore)
+        # Only works when inside a git repo and git is installed
         if os.path.isdir(os.path.join(cwd, ".git")) and shutil.which("git"):
             try:
-                # -I: 不搜索二进制, -n: 行号, --full-name: 相对路径
+                # -I: skip binary, -n: line numbers, --full-name: relative paths
                 cmd = ["git", "grep", "-I", "-n", "--full-name", pattern]
-                # 如果指定了子目录，限制搜索范围
+                # If subdirectory specified, limit search scope
                 rel_path = os.path.relpath(target_str, cwd)
                 if rel_path != ".":
                     cmd.append(rel_path)
@@ -1289,18 +1289,18 @@ async def search_files_tool_local(pattern: str, path: str = ".") -> str:
                 if proc.returncode == 0 and stdout:
                     return stdout.decode('utf-8', errors='replace').strip()
             except Exception:
-                pass # git grep 失败则回退
+                pass # Fallback if git grep fails
 
-        # 2. 优化的 Python 实现 (Ripgrep-lite)
+        # 2. Optimized Python implementation (Ripgrep-lite)
         matches = []
         regex = re.compile(pattern)
-        MAX_RESULTS = 1000  # 防止结果爆炸
+        MAX_RESULTS = 1000  # Prevent result explosion
         
-        # 定义需要跳过的目录和扩展名
+        # Define directories and extensions to skip
         SKIP_DIRS = {'.git', 'node_modules', '__pycache__', 'venv', '.env', 'dist', 'build', 'coverage'}
         SKIP_EXTS = {'.pyc', '.pyo', '.so', '.dll', '.exe', '.bin', '.png', '.jpg', '.jpeg', '.gif', '.zip', '.tar', '.gz'}
 
-        # 判断文件是否为二进制 (读取前 1024 字节检查 NULL)
+        # Check if file is binary (read first 1024 bytes for NULL)
         def is_binary(file_path):
             try:
                 with open(file_path, 'rb',encoding='utf-8') as f:
@@ -1310,26 +1310,26 @@ async def search_files_tool_local(pattern: str, path: str = ".") -> str:
                 return True
 
         for root, dirs, files in os.walk(target_str, topdown=True):
-            # 剪枝：直接修改 dirs 列表，阻止 os.walk 进入这些目录
+            # Pruning: modify dirs list directly to prevent os.walk from entering these dirs
             dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith('.')]
             
             for file in files:
                 if any(file.endswith(ext) for ext in SKIP_EXTS): continue
                 
                 full_path = os.path.join(root, file)
-                # 相对路径用于显示
+                # Relative path for display
                 display_path = os.path.relpath(full_path, cwd)
                 
                 if is_binary(full_path): continue
 
                 try:
-                    # 使用 aiofiles 异步读取文本
+                    # Use aiofiles for async text reading
                     async with aiofiles.open(full_path, 'r', encoding='utf-8', errors='replace') as f:
                         content = await f.read()
                         lines = content.splitlines()
                         for i, line in enumerate(lines, 1):
                             if regex.search(line):
-                                # 截断过长的行
+                                # Truncate overly long lines
                                 clean_line = line.strip()[:200]
                                 matches.append(f"{display_path}:{i}:{clean_line}")
                                 if len(matches) >= MAX_RESULTS:
@@ -1342,32 +1342,32 @@ async def search_files_tool_local(pattern: str, path: str = ".") -> str:
         return f"[Error] Search failed: {str(e)}"
     
 async def glob_files_tool_local(pattern: str, exclude: str = "") -> str:
-    """[Local] 智能查找：修复了拦截 '..' 的过度限制"""
+    """[Local] Smart file search: fixed over-restrictive '..' interception"""
     try:
         cwd = await _get_current_cwd()
         base = Path(cwd).resolve()
         
-        # 移除原有的 if '..' in pattern 拦截逻辑
-        # 依靠后续的 Path(root).relative_to(base) 来确保安全
+        # Remove original if '..' in pattern interception logic
+        # Rely on subsequent Path(root).relative_to(base) for safety
 
         excludes = [e.strip() for e in exclude.split(",") if e.strip()]
         DEFAULT_EXCLUDES = {'.git', 'node_modules', '__pycache__', 'venv', 'dist', 'build'}
         
         results = []
 
-        # 1. 尝试使用 git ls-files (略过，逻辑同原版)
-        # ... (中间 git 逻辑保持不变) ...
+        # 1. Try git ls-files (skipped, same logic as original)
+        # ... (middle git logic unchanged) ...
 
-        # 2. 优化的遍历逻辑
+        # 2. Optimized traversal logic
         for root, dirs, files in os.walk(str(base), topdown=True):
-            # 剪枝
+            # Pruning
             dirs[:] = [d for d in dirs if d not in DEFAULT_EXCLUDES and not d.startswith('.')]
             
             try:
-                # 核心安全检查：确保当前遍历到的 root 仍在 base 内部
+                # Core safety check: ensure current root is still within base
                 rel_root = Path(root).relative_to(base)
             except ValueError:
-                continue # 如果越界了，跳过该目录
+                continue # If out of bounds, skip this directory
 
             for name in files:
                 file_rel_path = str(rel_root / name)
@@ -1376,7 +1376,7 @@ async def glob_files_tool_local(pattern: str, exclude: str = "") -> str:
                 if any(fnmatch.fnmatch(file_rel_path, ex) for ex in excludes):
                     continue
                 
-                # 检查匹配项
+                # Check for matches
                 if fnmatch.fnmatch(file_rel_path, pattern):
                     results.append(file_rel_path)
 
@@ -1390,7 +1390,7 @@ async def glob_files_tool_local(pattern: str, exclude: str = "") -> str:
         return f"[Error] Glob failed: {str(e)}"
 
 async def edit_file_patch_tool_local(path: str, old_string: str, new_string: str) -> str:
-    """[Local] 精确替换：自动处理换行符差异 (CRLF/LF) 与空白字符容错"""
+    """[Local] Precise replacement: auto handle line ending differences (CRLF/LF) and whitespace tolerance"""
     try:
         cwd = await _get_current_cwd()
         target = resolve_strict_path(cwd, path, check_symlink=True)
@@ -1398,40 +1398,40 @@ async def edit_file_patch_tool_local(path: str, old_string: str, new_string: str
         if not target.exists():
             return f"[Error] File not found: {path}"
 
-        # 读取文件内容
+        # Read file content
         async with aiofiles.open(target, 'r', encoding='utf-8') as f:
             content = await f.read()
 
-        # --- 策略 1: 直接替换 (最快) ---
+        # --- Strategy 1: Direct replacement (fastest) ---
         if old_string in content:
             new_content = content.replace(old_string, new_string, 1)
             async with aiofiles.open(target, 'w', encoding='utf-8') as f:
                 await f.write(new_content)
             return "Patched successfully (Exact match)."
 
-        # --- 策略 2: 归一化换行符后替换 (处理 Windows/Linux 差异) ---
-        # 将所有 \r\n 转换为 \n 进行比对
+        # --- Strategy 2: Normalize line endings then replace (handle Windows/Linux differences) ---
+        # Convert all \r\n to \n for comparison
         content_normalized = content.replace('\r\n', '\n')
         old_normalized = old_string.replace('\r\n', '\n')
         new_normalized = new_string.replace('\r\n', '\n')
 
         if old_normalized in content_normalized:
-            # 这里的难点是：如果我们在 normalized 版本中替换了，
-            # 我们需要把写回的内容最好保持原文件的换行符风格。
-            # 简单起见，我们统一写回 normalized 的内容 (Python write 通常会自动处理 OS 换行)
+            # The difficulty here is: if we replace in the normalized version,
+            # we need to preserve the original file's line ending style when writing back.
+            # For simplicity, we write back normalized content (Python write usually handles OS line endings automatically)
             new_content_normalized = content_normalized.replace(old_normalized, new_normalized, 1)
             async with aiofiles.open(target, 'w', encoding='utf-8') as f:
                 await f.write(new_content_normalized)
             return "Patched successfully (Normalized line endings match)."
 
-        # --- 策略 3: 容错匹配 (忽略行尾空格) ---
-        # 如果还是找不到，尝试逐行对比，忽略 strip() 后的差异
+        # --- Strategy 3: Fuzzy match (ignore trailing whitespace) ---
+        # If still not found, try line-by-line comparison ignoring strip() differences
         lines = content.splitlines()
         old_lines = old_string.splitlines()
         
         if not old_lines: return "[Error] old_string is empty."
 
-        # 简单的滑动窗口匹配
+        # Simple sliding window match
         match_index = -1
         for i in range(len(lines) - len(old_lines) + 1):
             match = True
@@ -1444,21 +1444,21 @@ async def edit_file_patch_tool_local(path: str, old_string: str, new_string: str
                 break
         
         if match_index != -1:
-            # 找到了逻辑上匹配的块，进行替换
-            # 注意：这里我们使用 new_string (保持 AI 生成的格式)
-            # 但我们需要小心缩进。这里假设 AI 提供了正确的 new_string 缩进。
+            # Found logically matching block, perform replacement
+            # Note: we use new_string here (preserve AI-generated format)
+            # But we need to be careful with indentation. Here we assume AI provided correct new_string indentation.
             pre_content = "\n".join(lines[:match_index])
             post_content = "\n".join(lines[match_index + len(old_lines):])
             
-            # 拼接时要注意原文件的换行符，这里简化为 \n
+            # Be careful with original file line endings when concatenating, simplified to \n here
             final_content = (pre_content + "\n" + new_string + "\n" + post_content).strip()
             
             async with aiofiles.open(target, 'w', encoding='utf-8') as f:
                 await f.write(final_content)
             return "Patched successfully (Fuzzy match: ignored whitespace/indentation differences)."
 
-        # --- 失败：提供详细诊断信息 ---
-        # 帮助 AI 找到它可能想改的地方
+        # --- Failure: provide detailed diagnostic info ---
+        # Help AI find where it might have wanted to make changes
         first_line = old_lines[0].strip()[:50]
         candidates = []
         for i, line in enumerate(lines):
@@ -1477,7 +1477,7 @@ async def edit_file_patch_tool_local(path: str, old_string: str, new_string: str
 
 async def todo_write_tool_local(action: str, id: str = None, content: str = None, 
                                 priority: str = "medium", status: str = None) -> str:
-    """本地待办任务管理工具 - 使用3位数字有序ID"""
+    """Local todo task management tool - uses 3-digit ordered IDs"""
     try:
         cwd = await _get_current_cwd()
         party_dir = Path(cwd) / ".agent"
@@ -1486,7 +1486,7 @@ async def todo_write_tool_local(action: str, id: str = None, content: str = None
         
         todo_file = party_dir / "ai_todos.json"
         
-        # 读取现有任务
+        # Read existing tasks
         todos = []
         if todo_file.exists():
             try:
@@ -1499,20 +1499,20 @@ async def todo_write_tool_local(action: str, id: str = None, content: str = None
             
         msg = ""
 
-        # 生成下一个有序ID的辅助函数
+        # Helper function to generate next ordered ID
         def _generate_ordered_id(existing_todos):
             if not existing_todos:
                 return "1"
-            # 找出最大数字 ID（兼容旧数据）
+            # Find max numeric ID (compatible with old data)
             numeric_ids = [int(t['id']) for t in existing_todos if t['id'].isdigit()]
             if not numeric_ids:
                 return "1"
-            return str(max(numeric_ids) + 1)  # 1, 2, 3... 不补零，不限制位数
+            return str(max(numeric_ids) + 1)  # 1, 2, 3... no zero padding, no digit limit
 
         if action == "create":
-            """创建新任务 - 自动生成3位数字有序ID"""
+            """Create new task - auto generate ordered numeric ID"""
             if not content: 
-                return "[Error] 创建任务必须提供 content 参数"
+                return "[Error] Creating a task requires the content parameter"
             
             new_id = _generate_ordered_id(todos)
             new_todo = {
@@ -1524,15 +1524,15 @@ async def todo_write_tool_local(action: str, id: str = None, content: str = None
                 "completed_at": None
             }
             todos.append(new_todo)
-            msg = f"[Success] 已创建任务 #{new_id}: {content[:30]}"
+            msg = f"[Success] Created task #{new_id}: {content[:30]}"
             
         elif action == "list":
-            """列出所有任务 - 按ID数字大小排序"""
+            """List all tasks - sorted by ID number"""
             if not todos: 
-                return "当前项目暂无任务"
+                return "No project tasks currently"
             
-            lines = ["📋 **项目任务列表** (ID越大创建越晚):"]
-            # 按ID数字排序，确保展示有序性
+            lines = ["📋 **Project Task List** (Higher ID = created later):"]
+            # Sort by ID number to ensure ordered display
             sorted_todos = sorted(todos, key=lambda x: int(x['id']) if x['id'].isdigit() else 0)
             
             for t in sorted_todos:
@@ -1543,47 +1543,47 @@ async def todo_write_tool_local(action: str, id: str = None, content: str = None
             return "\n".join(lines)
 
         elif action == "complete":
-            """【高频】标记任务为已完成 - 幂等操作"""
+            """[High freq] Mark task as completed - idempotent operation"""
             if not id: 
-                return "[Error] 完成任务必须提供 id (如: 001)"
+                return "[Error] Completing a task requires an id (e.g.: 001)"
             
             target = next((t for t in todos if t['id'] == id), None)
             if not target: 
-                return f"[Error] 未找到任务 #{id}"
+                return f"[Error] Task not found #{id}"
             
             if target.get('status') == 'done':
-                msg = f"[Info] 任务 #{id} 已经是完成状态"
+                msg = f"[Info] Task #{id} is already completed"
             else:
                 target['status'] = 'done'
                 target['completed_at'] = datetime.now().isoformat()
-                msg = f"[Success] 已完成任务 #{id}"
+                msg = f"[Success] Completed task #{id}"
 
         elif action == "toggle":
-            """切换完成状态 - pending↔done"""
+            """Toggle completion status - pending↔done"""
             if not id: 
-                return "[Error] 切换状态必须提供 id"
+                return "[Error] Toggling status requires an id"
             
             target = next((t for t in todos if t['id'] == id), None)
             if not target: 
-                return f"[Error] 未找到任务 #{id}"
+                return f"[Error] Task not found #{id}"
             
             if target.get('status') != 'done':
                 target['status'] = 'done'
                 target['completed_at'] = datetime.now().isoformat()
-                msg = f"[Success] 已完成任务 #{id}"
+                msg = f"[Success] Completed task #{id}"
             else:
                 target['status'] = 'pending'
                 target['completed_at'] = None
-                msg = f"[Success] 已重新打开任务 #{id}"
+                msg = f"[Success] Reopened task #{id}"
 
         elif action == "update":
-            """编辑任务详情"""
+            """Edit task details"""
             if not id: 
-                return "[Error] 更新任务必须提供 id"
+                return "[Error] Updating a task requires an id"
             
             target = next((t for t in todos if t['id'] == id), None)
             if not target: 
-                return f"[Error] 未找到任务 #{id}"
+                return f"[Error] Task not found #{id}"
             
             if content: 
                 target['content'] = content
@@ -1598,35 +1598,35 @@ async def todo_write_tool_local(action: str, id: str = None, content: str = None
                 target['status'] = status
             
             target['updated_at'] = datetime.now().isoformat()
-            msg = f"[Success] 已更新任务 #{id}"
+            msg = f"[Success] Updated task #{id}"
 
         elif action == "delete":
-            """删除任务"""
+            """Delete task"""
             if not id: 
-                return "[Error] 删除任务必须提供 id"
+                return "[Error] Deleting a task requires an id"
             
             target = next((t for t in todos if t['id'] == id), None)
             if not target: 
-                return f"[Error] 未找到任务 #{id}"
+                return f"[Error] Task not found #{id}"
             
             todos.remove(target)
-            msg = f"[Success] 已删除任务 #{id}"
+            msg = f"[Success] Deleted task #{id}"
 
         else:
-            return f"[Error] 未知操作: {action}"
+            return f"[Error] Unknown action: {action}"
 
-        # 保存到本地文件
+        # Save to local file
         async with aiofiles.open(todo_file, 'w', encoding='utf-8') as f:
             await f.write(json.dumps(todos, indent=2, ensure_ascii=False))
             
         return msg
 
     except Exception as e:
-        return f"[Error] 操作失败: {str(e)}"
+        return f"[Error] Operation failed: {str(e)}"
     
-# ==================== Claude & Qwen Agents (恢复) ====================
+# ==================== Claude & Qwen Agents (Restored) ====================
 
-cli_info = "这是一个交互式命令行工具..."
+cli_info = "This is an interactive command line tool..."
 
 async def claude_code_async(prompt) -> str | AsyncIterator[str]:
     settings = await load_settings()
@@ -1691,46 +1691,46 @@ async def qwen_code_async(prompt: str) -> str | AsyncIterator[str]:
     return _stream()
 
 
-# ==================== [新增] Skill 专用读取工具 ====================
+# ==================== [New] Skill-Specific Read Tool ====================
 
 async def read_skill_tool_logic(cwd: str, skill_id: str, is_docker: bool = True) -> str:
     """
-    内部通用逻辑：读取 Skill 文件夹结构和说明文档。
-    若工作区不存在该技能，且全局技能目录可用，则自动复制到工作区（Docker/Local 均支持）。
+    Internal common logic: read Skill folder structure and documentation.
+    If the skill does not exist in the workspace and the global skill directory is available, automatically copy it to the workspace (supports both Docker/Local).
     """
     skill_rel_path = f".agent/skills/{skill_id}"
     workspace_skill_path = f"/workspace/.agent/skills/{skill_id}" if is_docker else str(Path(cwd) / ".agent" / "skills" / skill_id)
 
-    # ----- 复制逻辑：工作区缺失时，从全局复制 -----
+    # ----- Copy logic: when missing from workspace, copy from global -----
     if is_docker:
-        # Docker 环境：利用已映射的全局技能目录
-        container_name = await get_or_create_docker_sandbox(cwd)          # 获取/创建容器
-        global_skill_path = f"/home/agent/.agents/skills/{skill_id}"      # 容器内全局技能路径
+        # Docker env: use already-mapped global skill directory
+        container_name = await get_or_create_docker_sandbox(cwd)          # Get/create container
+        global_skill_path = f"/home/agent/.agents/skills/{skill_id}"      # Global skill path inside container
         try:
-            # 1. 检查工作区技能是否存在
+            # 1. Check if workspace skill exists
             test_cmd = ["test", "-d", workspace_skill_path]
-            await _exec_docker_cmd_simple(cwd, test_cmd)                  # 不存在会抛出异常
+            await _exec_docker_cmd_simple(cwd, test_cmd)                  # Will throw exception if not exists
         except Exception:
-            # 2. 工作区不存在，尝试从全局复制
+            # 2. Workspace does not exist, try copying from global
             try:
-                # 检查全局技能是否存在
+                # Check if global skill exists
                 test_global = ["test", "-d", global_skill_path]
                 await _exec_docker_cmd_simple(cwd, test_global)
 
-                # 确保目标父目录存在
+                # Ensure target parent directory exists
                 mkdir_cmd = ["mkdir", "-p", f"/workspace/.agent/skills"]
                 await _exec_docker_cmd_simple(cwd, mkdir_cmd)
 
-                # 执行复制
+                # Perform the copy
                 cp_cmd = ["cp", "-r", global_skill_path, f"/workspace/.agent/skills/"]
                 await _exec_docker_cmd_simple(cwd, cp_cmd)
 
                 print(f"[Skill AutoCopy][Docker] Copied global skill '{skill_id}' to workspace.")
             except Exception as e:
-                # 复制失败或全局技能不存在，继续尝试读取工作区（若不存在则后续报错）
+                # Copy failed or global skill unavailable, continue trying to read workspace
                 pass
     else:
-        # Local 环境：使用 shutil 复制（已实现，但整合到 logic 中统一管理）
+        # Local env: use shutil copy (already implemented, integrated here for unified management)
         workspace_path = Path(cwd) / ".agent" / "skills" / skill_id
         if not workspace_path.exists():
             global_path = Path(SKILLS_DIR) / skill_id
@@ -1746,9 +1746,9 @@ async def read_skill_tool_logic(cwd: str, skill_id: str, is_docker: bool = True)
                     print(f"[Skill AutoCopy][Local] Copied global skill '{skill_id}' to workspace.")
                 except Exception as e:
                     print(f"[Skill AutoCopy][Local] Copy failed: {e}. Will fallback to global read.")
-                    # 降级读取已由主流程处理
+                    # Fallback reading already handled by main flow
 
-    # ----- 原有读取逻辑保持不变（读取工作区技能）-----
+    # ----- Original read logic unchanged (read workspace skill) -----
     tree_str = ""
     doc_content = ""
 
@@ -1770,7 +1770,7 @@ async def read_skill_tool_logic(cwd: str, skill_id: str, is_docker: bool = True)
             if not base_path.exists():
                 return f"[Error] Skill '{skill_id}' folder does not exist in workspace and auto-copy failed or global skill unavailable."
 
-            # 生成本地文件树（深度 ≤2）
+            # Generate local file tree (depth ≤2)
             tree_lines = [f"{skill_id}/"]
             for p in base_path.rglob("*"):
                 if p.name.startswith("."): continue
@@ -1780,7 +1780,7 @@ async def read_skill_tool_logic(cwd: str, skill_id: str, is_docker: bool = True)
                 tree_lines.append(f"{indent}{p.name}{'/' if p.is_dir() else ''}")
             tree_str = "\n".join(tree_lines)
 
-            # 读取本地说明文档
+            # Read local documentation
             for name in ["SKILL.md", "skill.md", "SKILLS.md", "skills.md"]:
                 doc_path = base_path / name
                 if doc_path.exists():
@@ -1799,19 +1799,19 @@ async def read_skill_tool_logic(cwd: str, skill_id: str, is_docker: bool = True)
     return res
 
 async def read_skill_tool(skill_id: str) -> str:
-    """[Docker] 读取特定技能的完整文档和文件树"""
+    """[Docker] Read full documentation and file tree for a specific skill"""
     cwd = await _get_current_cwd()
     return await read_skill_tool_logic(cwd, skill_id, is_docker=True)
 
 async def read_skill_tool_local(skill_id: str) -> str:
-    """[Local] 读取特定技能的完整文档和文件树"""
+    """[Local] Read full documentation and file tree for a specific skill"""
     cwd = await _get_current_cwd()
     return await read_skill_tool_logic(cwd, skill_id, is_docker=False)
 
-# ==================== 工具注册表 (完整) ====================
+# ==================== Tool Registry (Complete) ====================
 
 TOOLS_REGISTRY = {
-    # --- 只读 ---
+    # --- Read-only ---
     "list_files": {
         "type": "function", "function": {
             "name": "list_files_tool", 
@@ -1921,7 +1921,7 @@ TOOLS_REGISTRY = {
             }
         }
     },
-    # --- 编辑 ---
+    # --- Edit ---
     "edit_file": {
         "type": "function", "function": {
             "name": "edit_file_tool", 
@@ -1957,44 +1957,44 @@ TOOLS_REGISTRY = {
             }
         }
     },
-    # --- 任务 ---
+    # --- Tasks ---
     "todo_write": {
         "type": "function",
         "function": {
             "name": "todo_write_tool",
-            "description": "[Docker] 待办任务管理工具。用于在 Docker 沙箱环境中管理任务列表，支持创建、查看、完成、编辑、删除等操作。所有任务持久化存储在容器的 /workspace/.agent/ai_todos.json 文件中。",
+            "description": "[Docker] Todo task management tool. Used to manage task lists in the Docker sandbox environment, supporting create, view, complete, edit, delete, etc. All tasks are persisted in the container's /workspace/.agent/ai_todos.json file.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
                         "enum": ["create", "list", "complete", "toggle", "update", "delete"],
-                        "description": "操作类型：create(创建), list(查看所有), complete(标记完成-幂等安全), toggle(切换状态-会反向), update(编辑详情), delete(删除)"
+                        "description": "Operation type: create, list (view all), complete (mark done - idempotent/safe), toggle (toggle status - reversible), update (edit details), delete"
                     },
                     "id": {
                         "type": "string",
-                        "description": "任务唯一标识。create时可选（自动生成），其他操作（complete/toggle/update/delete）时必需"
+                        "description": "Unique task identifier. Optional during create (auto-generated), required for other operations (complete/toggle/update/delete)"
                     },
                     "content": {
                         "type": "string",
-                        "description": "任务内容描述。create时必需，update时可选"
+                        "description": "Task content description. Required for create, optional for update"
                     },
                     "priority": {
                         "type": "string",
                         "enum": ["high", "medium", "low"],
-                        "description": "优先级：high(高), medium(中/默认), low(低)。create/update时可选"
+                        "description": "Priority: high, medium (default), low. Optional for create/update"
                     },
                     "status": {
                         "type": "string",
                         "enum": ["pending", "done"],
-                        "description": "【仅用于update】强制设置任务状态：pending(未完成), done(已完成)。注意：标记完成建议使用complete动作而非status参数"
+                        "description": "[For update only] Force task status: pending, done. Note: use complete action rather than status parameter for marking done"
                     }
                 },
                 "required": ["action"]
             }
         }
     },
-    # --- 基础设施 ---
+    # --- Infrastructure ---
     "bash": {
         "type": "function", "function": {
             "name": "docker_sandbox_async", 
@@ -2041,7 +2041,7 @@ TOOLS_REGISTRY = {
 }
 
 LOCAL_TOOLS_REGISTRY = {
-    # --- 只读 ---
+    # --- Read-only ---
     "list_files_local": {
         "type": "function", "function": {
             "name": "list_files_tool_local", 
@@ -2112,8 +2112,8 @@ LOCAL_TOOLS_REGISTRY = {
                 "type": "object", 
                 "properties": {
                     "pattern": {"type": "string"}
-                    # 注意：根据之前的代码实现，search_files_local 似乎没有 path 参数，而是直接在 CWD 搜索。
-                    # 如果需要支持指定路径，需要在实现代码中确认。
+                    # Note: based on previous code implementation, search_files_local seems to have no path parameter, searches directly in CWD.
+                    # If support for specifying path is needed, confirm in the implementation code.
                 }, 
                 "required": ["pattern"]
             }
@@ -2148,7 +2148,7 @@ LOCAL_TOOLS_REGISTRY = {
             }
         }
     },
-    # --- 编辑 ---
+    # --- Edit ---
     "edit_file_local": {
         "type": "function", "function": {
             "name": "edit_file_tool_local", 
@@ -2188,39 +2188,39 @@ LOCAL_TOOLS_REGISTRY = {
         "type": "function",
         "function": {
             "name": "todo_write_tool_local",
-            "description": "本地待办任务管理工具。用于管理项目中的任务列表，包括创建、查看、完成、编辑、删除等操作。所有任务持久化存储在项目根目录的 .agent/ai_todos.json 文件中。",
+            "description": "Local todo task management tool. Used to manage task lists in the project, including create, view, complete, edit, delete, etc. All tasks are persisted in the project root's .agent/ai_todos.json file.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
                         "enum": ["create", "list", "complete", "toggle", "update", "delete"],
-                        "description": "操作类型：create(创建), list(查看所有), complete(标记完成-幂等), toggle(切换状态-会反向), update(编辑详情), delete(删除)"
+                        "description": "Operation type: create, list (view all), complete (mark done - idempotent), toggle (toggle status - reversible), update (edit details), delete"
                     },
                     "id": {
                         "type": "string",
-                        "description": "任务唯一标识。create时可选（自动生成），其他操作（complete/toggle/update/delete）时必需"
+                        "description": "Unique task identifier. Optional during create (auto-generated), required for other operations (complete/toggle/update/delete)"
                     },
                     "content": {
                         "type": "string",
-                        "description": "任务内容描述。create时必需，update时可选"
+                        "description": "Task content description. Required for create, optional for update"
                     },
                     "priority": {
                         "type": "string",
                         "enum": ["high", "medium", "low"],
-                        "description": "优先级：high(高), medium(中/默认), low(低)。create/update时可选"
+                        "description": "Priority: high, medium (default), low. Optional for create/update"
                     },
                     "status": {
                         "type": "string",
                         "enum": ["pending", "done"],
-                        "description": "【仅用于update】强制设置任务状态：pending(未完成), done(已完成)。注意：标记完成建议使用complete动作而非status参数"
+                        "description": "[For update only] Force task status: pending, done. Note: use complete action rather than status parameter for marking done"
                     }
                 },
                 "required": ["action"]
             }
         }
     },
-    # --- 基础设施 ---
+    # --- Infrastructure ---
     "bash_local": {
         "type": "function", "function": {
             "name": "shell_tool_local", 
@@ -2265,7 +2265,7 @@ LOCAL_TOOLS_REGISTRY = {
     }
 }
 
-# 代理工具定义 (用于其他Agent)
+# Proxy tool definitions (for other Agents)
 claude_code_tool = {
     "type": "function",
     "function": {
@@ -2284,8 +2284,8 @@ qwen_code_tool = {
 }
 
 def get_tools_for_mode(mode: str) -> list:
-    """获取 Docker 环境工具集"""
-    # 基础只读
+    """Get Docker environment tool set"""
+    # Basic read-only
     read = [TOOLS_REGISTRY["list_files"], 
             TOOLS_REGISTRY["read_file"], 
             TOOLS_REGISTRY["read_file_range"],
@@ -2294,9 +2294,9 @@ def get_tools_for_mode(mode: str) -> list:
             TOOLS_REGISTRY["glob_files"],
             TOOLS_REGISTRY["read_skill"]
             ]
-    # 编辑
+    # Edit
     edit = [TOOLS_REGISTRY["edit_file"], TOOLS_REGISTRY["edit_file_patch"], TOOLS_REGISTRY["todo_write"]]
-    # 基础设施 (执行/进程/端口)
+    # Infrastructure (execution/process/port)
     infra = [TOOLS_REGISTRY["bash"], TOOLS_REGISTRY["manage_processes"], TOOLS_REGISTRY["manage_ports"]]
     
     if mode == "default": return read
@@ -2305,7 +2305,7 @@ def get_tools_for_mode(mode: str) -> list:
     return read
 
 def get_local_tools_for_mode(mode: str) -> list:
-    """获取 Local 环境工具集"""
+    """Get Local environment tool set"""
     read = [
         LOCAL_TOOLS_REGISTRY["list_files_local"], 
         LOCAL_TOOLS_REGISTRY["read_file_local"], 

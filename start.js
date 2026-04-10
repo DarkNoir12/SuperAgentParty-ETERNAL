@@ -2,29 +2,31 @@
 const { spawn } = require('child_process');
 const path = require('path');
 
-// 设置 NODE_ENV 为 development
+// Set NODE_ENV to development
 process.env.NODE_ENV = 'development';
 
 const platform = process.platform;
 let cmd, args, options;
 
 if (platform === 'win32') {
-  // Windows: 先切换代码页为 UTF-8，再启动 electron
-  cmd = 'cmd.exe';
-  args = ['/c', 'chcp 65001 >nul && electron .'];
-} else {
-  // macOS / Linux: 直接运行 electron
-  cmd = 'electron';
+  // Windows: Use local electron executable
+  const electronPath = path.join(__dirname, 'node_modules', 'electron', 'dist', 'electron.exe');
+  cmd = electronPath;
   args = ['.'];
+} else {
+  // macOS / Linux: Use npx or local electron
+  cmd = 'npx';
+  args = ['electron', '.'];
 }
 
 options = {
   stdio: 'inherit',
-  shell: false, // 非 Windows 不需要 shell；Windows 已用 cmd.exe
+  shell: false,
   env: process.env,
   cwd: process.cwd(),
 };
 
+console.log('Launching Electron:', args.join(' '));
 const child = spawn(cmd, args, options);
 
 child.on('exit', (code) => {

@@ -6,8 +6,8 @@ from typing import Callable, Optional
 
 class SimpleTwitchChat:
     """
-    仅负责“收包-解析-回调”，不再管事件循环。
-    生命周期由外部 start_twitch_task / stop_twitch_task 控制。
+    Only handles "receive-parse-callback", no event loop management.
+    Lifecycle is controlled by external start_twitch_task / stop_twitch_task.
     """
     def __init__(self, access_token: str, channel: str):
         self.access_token = access_token.replace("oauth:", "")
@@ -17,7 +17,7 @@ class SimpleTwitchChat:
         self._task: Optional[asyncio.Task] = None
         self._running = False
 
-    # ---------- 外部调用 ----------
+    # ---------- External API ----------
     def set_callback(self, cb: Callable[[str, str, str], None]):
         self._callback = cb
 
@@ -39,7 +39,7 @@ class SimpleTwitchChat:
                 pass
         self._close_socket()
 
-    # ---------- 内部 ----------
+    # ---------- Internal ----------
     async def _listen_loop(self):
         reconnect_delay = 5
         while self._running:
@@ -49,7 +49,7 @@ class SimpleTwitchChat:
             except Exception as exc:
                 if not self._running:
                     break
-                print(f"[Twitch] 连接异常: {exc}，{reconnect_delay}s 后重连")
+                print(f"[Twitch] Connection error: {exc}, reconnecting in {reconnect_delay}s")
                 await asyncio.sleep(reconnect_delay)
                 reconnect_delay = min(reconnect_delay * 2, 60)
 
@@ -61,7 +61,7 @@ class SimpleTwitchChat:
         self._sock.connect(("irc.chat.twitch.tv", 6697))
         self._sock.settimeout(None)
 
-        # 认证
+        # Authentication
         self._send(f"CAP REQ :twitch.tv/tags twitch.tv/commands")
         self._send(f"PASS oauth:{self.access_token}")
         self._send(f"NICK justinfan12345")
@@ -71,7 +71,7 @@ class SimpleTwitchChat:
         while self._running:
             data = await asyncio.get_event_loop().sock_recv(self._sock, 4096)
             if not data:
-                raise ConnectionAbortedError("服务器关闭连接")
+                raise ConnectionAbortedError("Server closed connection")
             buffer += data.decode("utf-8", errors="ignore")
             while "\r\n" in buffer:
                 line, buffer = buffer.split("\r\n", 1)
@@ -85,7 +85,7 @@ class SimpleTwitchChat:
         if "PRIVMSG" not in line:
             return
 
-        # 1. 提取标签段（@ 开头，空格结束）
+        # 1. Extract tag segment (@ prefix, space terminated)
         tags = {}
         if line.startswith("@"):
             tag_str, _, line = line[1:].partition(" ")
@@ -94,27 +94,27 @@ class SimpleTwitchChat:
                     k, v = kv.split("=", 1)
                     tags[k] = v
 
-        # 2. 用户名：优先 display-name，其次 user-id，最后 login
+        # 2. Username: prefer display-name, then user-id, then login
         user = (
             tags.get("display-name") or
             tags.get("user-id") or
-            line.split("!", 1)[0]  # 最末兜底
+            line.split("!", 1)[0]  # Fallback
         ).strip()
 
-        # 3. 频道名
+        # 3. Channel name
         try:
             _, _, rest = line.partition("PRIVMSG #")
             channel = rest.split(" ", 1)[0].lower().lstrip("#")
         except Exception:
             return
 
-        # 4. 消息内容
+        # 4. Message content
         try:
             msg = line.split(" :", maxsplit=1)[1]
         except Exception:
             return
 
-        # 5. 回调
+        # 5. Callback
         if self._callback:
             asyncio.create_task(
                 self._callback(channel, user, msg)
@@ -139,7 +139,7 @@ class SimpleTwitchChat:
 
 
 # --------------------------------------------------
-# 对外唯一接口
+# External interface
 # --------------------------------------------------
 _twitch_chat: Optional[SimpleTwitchChat] = None
 
@@ -151,12 +151,12 @@ async def start_twitch_task(config: dict, on_msg_cb: Callable[[str, str, str], N
     token = config.get("twitch_access_token", "")
     channel = config.get("twitch_channel", "")
     if not (token and channel):
-        raise ValueError("Twitch token 或频道为空")
+        raise ValueError("Twitch token or channel is empty")
 
     _twitch_chat = SimpleTwitchChat(token, channel)
     _twitch_chat.set_callback(on_msg_cb)
     await _twitch_chat.start()
-    print("[Twitch] 监听任务已启动")
+    print("[Twitch] Listener task started")
 
 
 async def stop_twitch_task():
@@ -164,4 +164,4 @@ async def stop_twitch_task():
     if _twitch_chat:
         await _twitch_chat.stop()
         _twitch_chat = None
-        print("[Twitch] 监听任务已停止")
+        print("[Twitch] Listener task stopped")

@@ -17,7 +17,7 @@ class TelegramClient:
         self.enableTTS = False
         self.wakeWord = None
         self.bot_token: str = ""
-        self.config = None # 存储 config 引用
+        self.config = None # Store config reference
         self._is_ready = False
         self._manager_ref = None
         self._ready_callback = None
@@ -26,11 +26,11 @@ class TelegramClient:
         self.session: Optional[aiohttp.ClientSession] = None
         self.port = get_port()
         
-        # --- 新增：注册到行为引擎 ---
+        # --- Added: Register to behavior engine ---
         from py.behavior_engine import global_behavior_engine
         global_behavior_engine.register_handler("telegram", self.execute_behavior_event)
 
-    # -------------------- 生命周期 --------------------
+    # -------------------- Lifecycle --------------------
     async def run(self):
         # Add a session timeout slightly above the polling timeout
         timeout = aiohttp.ClientTimeout(total=35)  # 5s buffer
@@ -43,7 +43,7 @@ class TelegramClient:
                 manager._ready_complete.set()
                 manager.is_running = True
 
-        logging.info("Telegram 轮询开始")
+        logging.info("Telegram polling started")
         try:
             while not self._shutdown_requested:
                 try:
@@ -53,7 +53,7 @@ class TelegramClient:
                 except asyncio.TimeoutError:
                     # Normal when shutdown happens during long poll
                     pass
-                
+
                 # Prevent tight loop when no updates
                 if not updates:
                     await asyncio.sleep(0.1)
@@ -71,7 +71,7 @@ class TelegramClient:
                 return []
             return data["result"]
 
-    # -------------------- 消息入口 --------------------
+    # -------------------- Message Entry --------------------
     async def _handle_update(self, u: dict):
         if "message" not in u:
             return
@@ -79,31 +79,31 @@ class TelegramClient:
         self.offset = u["update_id"] + 1
         chat_id = msg["chat"]["id"]
 
-        # 文字
+        # Text
         if "text" in msg:
             await self._handle_text(chat_id, msg)
-        # 图片（任意尺寸）
+        # Photo (any size)
         elif "photo" in msg:
             await self._handle_photo(chat_id, msg)
-        # 语音 / 音频
+        # Voice / Audio
         elif "voice" in msg or "audio" in msg:
             await self._handle_voice(chat_id, msg)
 
-    # -------------------- 文字 --------------------
+    # -------------------- Text --------------------
     async def _handle_text(self, chat_id: int, msg: dict):
         text = msg["text"]
-        
-        # --- 新增：上报活跃状态到引擎，用于无输入检测 ---
+
+        # --- Added: Report active status to engine for inactivity detection ---
         from py.behavior_engine import global_behavior_engine
         global_behavior_engine.report_activity("telegram", str(chat_id))
 
         if self.quickRestart:
             if text in {"/restart", "/重启"}:
                 self.memoryList[chat_id] = []
-                await self._send_text(chat_id, "对话记录已重置。")
+                await self._send_text(chat_id, "Conversation history has been reset.")
                 return
 
-        # --- 新增：/id 指令 ---
+        # --- Added: /id command ---
         if text.strip().lower() == "/id":
             info_msg = (
                 f"🤖 **Telegram Session Information Identified Successfully**\n\n"
@@ -115,35 +115,35 @@ class TelegramClient:
 
         if self.wakeWord:
             if self.wakeWord not in text:
-                logging.info(f"未检测到唤醒词: {self.wakeWord}")
+                logging.info(f"Wake word not detected: {self.wakeWord}")
                 return
         await self._process_llm(chat_id, text, [], msg.get("message_id"))
 
-    # -------------------- 图片 --------------------
+    # -------------------- Photo --------------------
     async def _handle_photo(self, chat_id: int, msg: dict):
         from py.behavior_engine import global_behavior_engine
         global_behavior_engine.report_activity("telegram", str(chat_id))
-        photos = msg["photo"]  # 数组，尺寸升序
+        photos = msg["photo"]  # Array, size ascending
         file_id = photos[-1]["file_id"]
         file_info = await self._get_file(file_id)
         if not file_info:
-            await self._send_text(chat_id, "下载图片失败")
+            await self._send_text(chat_id, "Failed to download photo")
             return
         url = f"https://api.telegram.org/file/bot{self.bot_token}/{file_info['file_path']}"
         async with self.session.get(url) as resp:
             if resp.status != 200:
-                await self._send_text(chat_id, "下载图片失败")
+                await self._send_text(chat_id, "Failed to download photo")
                 return
             img_bytes = await resp.read()
         base64_data = base64.b64encode(img_bytes).decode()
         data_uri = f"data:image/jpeg;base64,{base64_data}"
         user_content = [
             {"type": "image_url", "image_url": {"url": data_uri}},
-            {"type": "text", "text": "用户发送了一张图片"}
+            {"type": "text", "text": "The user sent a photo"}
         ]
         await self._process_llm(chat_id, "", user_content, msg.get("message_id"))
 
-    # -------------------- 语音 --------------------
+    # -------------------- Voice --------------------
     async def _handle_voice(self, chat_id: int, msg: dict):
         from py.behavior_engine import global_behavior_engine
         global_behavior_engine.report_activity("telegram", str(chat_id))
@@ -151,27 +151,27 @@ class TelegramClient:
         file_id = voice["file_id"]
         file_info = await self._get_file(file_id)
         if not file_info:
-            await self._send_text(chat_id, "下载语音失败")
+            await self._send_text(chat_id, "Failed to download voice")
             return
         url = f"https://api.telegram.org/file/bot{self.bot_token}/{file_info['file_path']}"
         async with self.session.get(url) as resp:
             if resp.status != 200:
-                await self._send_text(chat_id, "下载语音失败")
+                await self._send_text(chat_id, "Failed to download voice")
                 return
             voice_bytes = await resp.read()
-        # 调用本地 ASR
+        # Call local ASR
         text = await self._transcribe(voice_bytes)
         if self.wakeWord:
             if self.wakeWord not in text:
-                logging.info(f"未检测到唤醒词: {self.wakeWord}")
+                logging.info(f"Wake word not detected: {self.wakeWord}")
                 return
 
         if not text:
-            await self._send_text(chat_id, "语音转文字失败")
+            await self._send_text(chat_id, "Speech-to-text failed")
             return  
         await self._process_llm(chat_id, text, [], msg.get("message_id"))
 
-    # -------------------- LLM 统一处理 --------------------
+    # -------------------- Unified LLM Processing --------------------
     async def _process_llm(self, chat_id: int, text: str, extra_content: List[dict], reply_to_msg_id: Optional[int]):
         if chat_id not in self.memoryList:
             self.memoryList[chat_id] = []
@@ -180,7 +180,7 @@ class TelegramClient:
         if chat_id not in self.fileLinks:
             self.fileLinks[chat_id] = []
 
-        # 构造 user 消息
+        # Construct user message
         if extra_content:
             user_msg = {"role": "user", "content": extra_content}
         else:
@@ -190,11 +190,11 @@ class TelegramClient:
         settings = await load_settings()
         client = AsyncOpenAI(api_key="super-secret-key", base_url=f"http://127.0.0.1:{get_port()}/v1")
 
-        # 初始化状态，新增 audio_buffer
+        # Initialize state, added audio_buffer
         state = {
-            "text_buffer": "", 
+            "text_buffer": "",
             "image_cache": [],
-            "audio_buffer": [] # <--- 新增
+            "audio_buffer": [] # <--- Added
         }
         full_response = []
 
@@ -207,7 +207,7 @@ class TelegramClient:
                     "asyncToolsID": self.asyncToolsID[chat_id],
                     "fileLinks": self.fileLinks[chat_id],
                     "is_app_bot": True,
-                    # 后端根据这个标志决定是否返回音频流
+                    # Backend determines whether to return audio stream based on this flag
                 },
             )
             
@@ -220,7 +220,7 @@ class TelegramClient:
                 tool_link = getattr(delta, 'tool_link', '') or ""
                 async_tool_id = getattr(delta, 'async_tool_id', '') or ""
 
-                # --- [新增] 捕获音频流 ---
+                # --- [Added] Capture audio stream ---
                 if hasattr(delta, "audio") and delta.audio:
                     if "data" in delta.audio:
                         state["audio_buffer"].append(delta.audio["data"])
@@ -239,7 +239,7 @@ class TelegramClient:
                 state["text_buffer"] += seg
                 full_response.append(content)
 
-                # 文本分段发送逻辑 (保持不变)
+                # Text chunking logic (unchanged)
                 if state["text_buffer"]:
                     force_split = len(state["text_buffer"]) > 3500
                     while True:
@@ -284,118 +284,118 @@ class TelegramClient:
                                 
                         if force_split: break
 
-            # 发送剩余文本
+            # Send remaining text
             if state["text_buffer"]:
                 clean = self._clean_text(state["text_buffer"])
                 if clean and not self.enableTTS:
                     await self._send_text(chat_id, clean)
 
-            # 提取并发送图片
+            # Extract and send images
             self._extract_images("".join(full_response), state)
             for img_url in state["image_cache"]:
                 await self._send_photo(chat_id, img_url)
 
-            # --- [新增] 处理 Omni 音频 ---
+            # --- [Added] Process Omni audio ---
             has_omni_audio = False
             if state["audio_buffer"]:
                 try:
-                    logging.info(f"处理 Telegram Omni 音频，分片数: {len(state['audio_buffer'])}")
+                    logging.info(f"Processing Telegram Omni audio, chunks: {len(state['audio_buffer'])}")
                     full_audio_b64 = "".join(state["audio_buffer"])
                     raw_audio_bytes = base64.b64decode(full_audio_b64)
-                    
-                    # 异步转码
+
+                    # Async conversion
                     final_audio, is_opus = await asyncio.to_thread(
-                        convert_to_opus_simple, 
+                        convert_to_opus_simple,
                         raw_audio_bytes
                     )
-                    
-                    # 发送
+
+                    # Send
                     await self._send_omni_voice(chat_id, final_audio, is_opus)
                     has_omni_audio = True
                 except Exception as e:
-                    logging.error(f"Omni 音频处理失败: {e}")
+                    logging.error(f"Omni audio processing failed: {e}")
             # ---------------------------
 
-            # 记忆
+            # Memory
             assistant_text = "".join(full_response)
             self.memoryList[chat_id].append({"role": "assistant", "content": assistant_text})
 
-            # 记忆限制
+            # Memory limit
             if self.memoryLimit > 0:
                 while len(self.memoryList[chat_id]) > self.memoryLimit * 2:
                     self.memoryList[chat_id].pop(0)
                     if self.memoryList[chat_id]:
                         self.memoryList[chat_id].pop(0)
 
-            # 传统 TTS (如果没有 Omni 音频且开启了 TTS)
+            # Traditional TTS (if no Omni audio and TTS is enabled)
             if self.enableTTS and assistant_text and not has_omni_audio:
                 await self._send_voice(chat_id, assistant_text)
-                
+
         except Exception as e:
-            logging.error(f"LLM 处理异常: {e}")
-            await self._send_text(chat_id, f"处理出错: {e}")
+            logging.error(f"LLM processing error: {e}")
+            await self._send_text(chat_id, f"Error processing: {e}")
 
     async def _send_omni_voice(self, chat_id: int, audio_data: bytes, is_opus: bool):
-        """发送 Omni 语音消息"""
+        """Send Omni voice message"""
         try:
             data = aiohttp.FormData()
             data.add_field("chat_id", str(chat_id))
-            
-            # 如果是 Opus 格式，可以使用 sendVoice 发送语音气泡
+
+            # If in Opus format, can use sendVoice to send voice bubble
             if is_opus:
                 url = f"https://api.telegram.org/bot{self.bot_token}/sendVoice"
-                # Telegram 对 filename 没那么严格，但 mime-type 最好正确
+                # Telegram is not strict about filename, but mime-type should be correct
                 data.add_field("voice", io.BytesIO(audio_data), filename="voice.ogg", content_type="audio/ogg")
-                logging.info("发送 Omni 语音气泡 (sendVoice)")
+                logging.info("Sending Omni voice bubble (sendVoice)")
             else:
-                # 如果转换失败（例如 Raw PCM 或 WAV），sendVoice 可能会失败或不显示波形
-                # 降级使用 sendDocument 发送文件
+                # If conversion fails (e.g., Raw PCM or WAV), sendVoice may fail or not show waveform
+                # Fallback to sendDocument to send as file
                 url = f"https://api.telegram.org/bot{self.bot_token}/sendDocument"
                 data.add_field("document", io.BytesIO(audio_data), filename="reply.wav")
-                logging.info("发送 Omni 音频文件 (sendDocument)")
+                logging.info("Sending Omni audio file (sendDocument)")
 
             async with self.session.post(url, data=data) as resp:
                 if resp.status != 200:
                     err_text = await resp.text()
-                    logging.error(f"发送 Omni 音频失败: {resp.status} - {err_text}")
+                    logging.error(f"Failed to send Omni audio: {resp.status} - {err_text}")
         except Exception as e:
-            logging.error(f"发送 Omni 音频异常: {e}")
+            logging.error(f"Send Omni voice exception: {e}")
 
 
-    # -------------------- 发送 API 封装 --------------------
+    # -------------------- Send API Wrapper --------------------
     async def _send_text(self, chat_id: int, text: str, reply_to_msg_id: Optional[int] = None):
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         
-        # 1. 尝试使用 Markdown (Legacy) 模式
-        # 相比 MarkdownV2，Legacy 模式容错率更高，虽然不支持下划线和删除线，但支持粗体、斜体、代码块和链接
+        # 1. Try using Markdown (Legacy) mode
+        # Compared to MarkdownV2, Legacy mode has higher fault tolerance. Although it doesn't support underlines and strikethrough, it supports bold, italic, code blocks, and links
         payload = {
-            "chat_id": chat_id, 
-            "text": text, 
-            "parse_mode": "Markdown" 
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown"
         }
         if reply_to_msg_id:
             payload["reply_to_message_id"] = reply_to_msg_id
-            
+
         async with self.session.post(url, json=payload) as resp:
             if resp.status == 200:
-                return # 发送成功
-            
-            # 2. 如果发送失败（通常是因为 Markdown 语法未闭合导致的 400 错误）
-            # 读取错误信息（可选，用于调试）
-            # err_text = await resp.text() 
-            # logging.warning(f"Markdown 发送失败，尝试纯文本重发: {err_text}")
+                return # Sent successfully
 
-            # 3. 回退策略：移除 parse_mode，发送纯文本
+            # 2. If sending fails (usually due to unclosed Markdown syntax causing 400 errors)
+            # Read error message (optional, for debugging)
+            # err_text = await resp.text()
+            # logging.warning(f"Markdown send failed, retrying as plain text: {err_text}")
+
+            # 3. Fallback: Remove parse_mode and send as plain text
             payload.pop("parse_mode")
             await self.session.post(url, json=payload)
 
     async def _send_photo(self, chat_id: int, image_url: str):
-        # 先下载
+        # Download first
         async with self.session.get(image_url) as resp:
             if resp.status != 200:
                 return
             img_bytes = await resp.read()
-        #  multipart 上传
+        # Multipart upload
         url = f"https://api.telegram.org/bot{self.bot_token}/sendPhoto"
         data = aiohttp.FormData()
         data.add_field("chat_id", str(chat_id))
@@ -438,38 +438,38 @@ class TelegramClient:
             "voice": "default",
             "ttsSettings": tts_settings,
             "index": index,
-            "mobile_optimized": True,  # 飞书优化标志
-            "format": "opus"           # 明确请求opus格式
+            "mobile_optimized": True,  # Feishu optimization flag
+            "format": "opus"           # Explicitly request opus format
         }
 
-        logging.info(f"发送TTS请求（opus格式），文本长度: {len(text)}，引擎: {tts_settings.get('engine', 'edgetts')}")
+        logging.info(f"Sending TTS request (opus format), text length: {len(text)}, engine: {tts_settings.get('engine', 'edgetts')}")
 
         timeout = aiohttp.ClientTimeout(total=90, connect=30, sock_read=60)
-        
+
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(
                 f"http://127.0.0.1:{self.port}/tts",
                 json=payload
             ) as resp:
                 if resp.status != 200:
-                    logging.error(f"TTS 请求失败: {resp.status}")
+                    logging.error(f"TTS request failed: {resp.status}")
                     error_text = await resp.text()
-                    logging.error(f"TTS 错误响应: {error_text}")
-                    await self._send_text(chat_id, "语音生成失败，请稍后重试")
+                    logging.error(f"TTS error response: {error_text}")
+                    await self._send_text(chat_id, "Voice generation failed, please try again later")
                     return
 
                 opus_data = await resp.read()
                 audio_format = resp.headers.get("X-Audio-Format", "unknown")
-                
-                logging.info(f"TTS响应成功，opus大小: {len(opus_data) / 1024:.1f}KB，格式: {audio_format}")
-        # 上传语音
+
+                logging.info(f"TTS response successful, opus size: {len(opus_data) / 1024:.1f}KB, format: {audio_format}")
+        # Upload voice
         url = f"https://api.telegram.org/bot{self.bot_token}/sendVoice"
         data = aiohttp.FormData()
         data.add_field("chat_id", str(chat_id))
         data.add_field("voice", io.BytesIO(opus_data), filename="voice.opus")
         await self.session.post(url, data=data)
 
-    # -------------------- 工具 --------------------
+    # -------------------- Tools --------------------
     async def _get_file(self, file_id: str) -> Optional[dict]:
         url = f"https://api.telegram.org/bot{self.bot_token}/getFile"
         async with self.session.get(url, params={"file_id": file_id}) as resp:
@@ -489,9 +489,9 @@ class TelegramClient:
             return res.get("text") if res.get("success") else None
 
     def _clean_text(self, text: str) -> str:
-        # 1. 移除 Markdown 图片 ![alt](url) -> 空
+        # 1. Remove Markdown images ![alt](url) -> empty
         text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
-        # 移除html标签
+        # Remove HTML tags
         text = re.sub(r'<.*?>', '', text)
         return text.strip()
 
@@ -501,9 +501,9 @@ class TelegramClient:
 
     async def execute_behavior_event(self, chat_id: str, behavior_item: BehaviorItem):
         """
-        回调函数：响应行为引擎的指令
+        Callback: Respond to behavior engine commands
         """
-        logging.info(f"[TelegramClient] 行为触发! 目标: {chat_id}, 动作类型: {behavior_item.action.type}")
+        logging.info(f"[TelegramClient] Behavior triggered! Target: {chat_id}, Action type: {behavior_item.action.type}")
         
         prompt_content = await self._resolve_behavior_prompt(behavior_item)
         if not prompt_content: return
@@ -512,12 +512,12 @@ class TelegramClient:
         if cid not in self.memoryList:
             self.memoryList[cid] = []
         
-        # 构造上下文：历史记录 + 系统指令
+        # Construct context: history + system instruction
         messages = self.memoryList[cid].copy()
         system_instruction = f"[system]: {prompt_content}"
         messages.append({"role": "user", "content": system_instruction})
-        
-        # 同时记录到内存，维持逻辑连贯
+
+        # Also record to memory to maintain logical continuity
         self.memoryList[cid].append({"role": "user", "content": system_instruction})
 
         try:
@@ -525,39 +525,39 @@ class TelegramClient:
                 api_key="super-secret-key",
                 base_url=f"http://127.0.0.1:{get_port()}/v1"
             )
-            
-            # 使用非流式请求处理主动行为
+
+            # Use non-streaming request to handle proactive behavior
             response = await client.chat.completions.create(
                 model=self.TelegramAgent,
                 messages=messages,
-                stream=False, 
+                stream=False,
                 extra_body={
                     "is_app_bot": True,
                     "behavior_trigger": True
                 }
             )
-            
+
             reply_content = response.choices[0].message.content
             if reply_content:
-                # 1. 发送文本
+                # 1. Send text
                 await self._send_text(cid, reply_content)
                 self.memoryList[cid].append({"role": "assistant", "content": reply_content})
-                
-                # 2. 如果开启了 TTS，则发送语音
+
+                # 2. If TTS is enabled, send voice
                 if self.enableTTS:
                     await self._send_voice(cid, reply_content)
-            
+
         except Exception as e:
-            logging.error(f"[TelegramClient] 执行行为 API 调用失败: {e}")
+            logging.error(f"[TelegramClient] Behavior API call failed: {e}")
 
     async def _resolve_behavior_prompt(self, behavior: BehaviorItem) -> Optional[str]:
-        """解析行为配置，生成具体的 Prompt 指令"""
+        """Parse behavior configuration, generate specific Prompt instructions"""
         import random
         action = behavior.action
-        
+
         if action.type == "prompt":
             return action.prompt
-            
+
         elif action.type == "random":
             if not action.random or not action.random.events:
                 return None
@@ -568,6 +568,6 @@ class TelegramClient:
                 idx = action.random.orderIndex
                 if idx >= len(events): idx = 0
                 selected = events[idx]
-                action.random.orderIndex = idx + 1 # 内存内更新
+                action.random.orderIndex = idx + 1 # In-memory update
                 return selected
         return None

@@ -1,9 +1,9 @@
 {
   "name": "super-agent-party",
   "version": "v0.4.0",
-  "description": "超级智能体派对v0.4.0 | 轻松链接一切!",
+  "description": "Super Agent Party v0.4.0 | Connect Everything with Ease!",
   "main": "main.js",
-  "asar": true, 
+  "asar": true,
   "scripts": {
     "start": "node start.js",
     "dev": "node start.js",
@@ -135,7 +135,7 @@
       "uninstallDisplayName": "${productName}",
       "createDesktopShortcut": true,
       "differentialPackage": true,
-      "perMachine": false 
+      "perMachine": false
     }
   },
   "devDependencies": {
